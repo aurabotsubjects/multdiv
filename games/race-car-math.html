@@ -165,6 +165,24 @@
     padding:10px 0; border-radius:10px; border:none; cursor:pointer; background:var(--p2); color:#fff;
   }
   .picker .p2err{ color:#ff6b6b; font-size:13px; margin-top:6px; display:none; }
+  .mode-toggle{ display:flex; gap:6px; margin-bottom:10px; }
+  .mode-btn{
+    flex:1; font-family:'Fredoka',sans-serif; font-weight:600; font-size:13px;
+    background:var(--panel-2); color:var(--ink-dim); border:2px solid transparent; border-radius:10px;
+    padding:8px 4px; cursor:pointer; transition: all .15s;
+  }
+  .mode-btn.active{ background:var(--p2); color:#fff; border-color:#fff; }
+  .diff-grid{ display:flex; gap:6px; }
+  .diff-btn{
+    flex:1; font-family:'Chakra Petch',monospace; font-weight:700; font-size:13px;
+    background:var(--panel-2); color:var(--ink); border:2px solid transparent; border-radius:10px;
+    padding:10px 2px; cursor:pointer; text-align:center;
+  }
+  .diff-btn.sel{ background:var(--p2); border-color:#fff; }
+  .ai-readout{
+    font-family:'Chakra Petch',monospace; font-weight:700; font-size:15px; text-align:center;
+    padding:14px 0 2px;
+  }
   #startBtn{
     display:block; margin:20px auto 0; font-family:'Chakra Petch',monospace; font-weight:700;
     font-size:20px; padding:12px 40px; border-radius:999px; border:none; cursor:pointer;
@@ -338,6 +356,10 @@
       </div>
       <div class="picker p2">
         <h3>🔵 Player 2</h3>
+        <div class="mode-toggle">
+          <button type="button" class="mode-btn active" id="p2ModeHuman">👤 Human</button>
+          <button type="button" class="mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
+        </div>
         <div id="p2LoginBox">
           <label>Your name</label>
           <select id="p2NameSelect"><option value="">Loading roster…</option></select>
@@ -345,6 +367,15 @@
           <input type="password" id="p2Password" />
           <div class="p2err" id="p2Err">That password didn't match — try again.</div>
           <button type="button" class="p2go" id="p2GoBtn">Join race</button>
+        </div>
+        <div id="p2AIBox" class="hidden">
+          <label>Choose a difficulty</label>
+          <div class="diff-grid">
+            <button type="button" class="diff-btn" data-diff="easy">🟢 Easy</button>
+            <button type="button" class="diff-btn" data-diff="medium">🟡 Medium</button>
+            <button type="button" class="diff-btn" data-diff="hard">🔴 Hard</button>
+          </div>
+          <div class="ai-readout" id="p2AIReadout"></div>
         </div>
       </div>
     </div>
@@ -371,6 +402,7 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { getClassRoster, studentLoginSecondPlayer } from "../js/auth.js";
+import { createAIOpponent, scheduleAIAnswer } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
@@ -396,7 +428,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     raceRunning:false, raceOver:false
   };
   function mkPlayer(){
-    return { level:null, distance:0, baseSpeed:0, streak:0, boostEndTime:0, laps:0, buffer:'', qa:{n:null,answer:null} };
+    return { level:null, distance:0, baseSpeed:0, streak:0, boostEndTime:0, laps:0, buffer:'', qa:{n:null,answer:null}, isAI:false, aiProfile:null, aiCancel:null, name:null };
   }
 
   // ---------- PLAYER SETUP (auto from login, no manual table picking) ----------
@@ -420,12 +452,50 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     try {
       const profile = await studentLoginSecondPlayer(email, password);
       state.p2.level = profile.level || 1;
+      state.p2.isAI = false;
+      state.p2.aiProfile = null;
+      state.p2.name = profile.name;
       document.getElementById('p2TableLabel').textContent = levelInfo(state.p2.level).label;
       document.getElementById('p2LoginBox').innerHTML = `<div class="readout">${profile.name} — ${levelInfo(state.p2.level).label} ✔️</div>`;
       checkReady();
     } catch (err) {
       errEl.style.display = 'block';
     }
+  });
+
+  // ---------- PLAYER 2: HUMAN vs COMPUTER MODE ----------
+  function setP2Mode(mode){
+    document.getElementById('p2ModeHuman').classList.toggle('active', mode === 'human');
+    document.getElementById('p2ModeAI').classList.toggle('active', mode === 'ai');
+    document.getElementById('p2LoginBox').classList.toggle('hidden', mode !== 'human');
+    document.getElementById('p2AIBox').classList.toggle('hidden', mode !== 'ai');
+    if (mode === 'human') {
+      state.p2.level = null;
+      state.p2.isAI = false;
+      state.p2.aiProfile = null;
+      state.p2.name = null;
+      document.getElementById('p2TableLabel').textContent = '-';
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('sel'));
+      document.getElementById('p2AIReadout').textContent = '';
+      checkReady();
+    }
+  }
+  document.getElementById('p2ModeHuman').addEventListener('click', () => setP2Mode('human'));
+  document.getElementById('p2ModeAI').addEventListener('click', () => setP2Mode('ai'));
+
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('sel'));
+      btn.classList.add('sel');
+      const bot = createAIOpponent(btn.dataset.diff);
+      state.p2.level = bot.level;
+      state.p2.isAI = true;
+      state.p2.aiProfile = bot.profile;
+      state.p2.name = bot.name;
+      document.getElementById('p2TableLabel').textContent = levelInfo(bot.level).label;
+      document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
+      checkReady();
+    });
   });
 
   // ---------- AUDIO (tiny beeps, no assets needed) ----------
@@ -457,6 +527,15 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
   }
   document.getElementById('startBtn').addEventListener('click', ()=>{
     if(!(state.p1.level && state.p2.level)) return;
+    const p2NameEl = document.querySelector('#panel-p2 .player-name');
+    const p2Keypad = document.getElementById('p2Keypad');
+    if(state.p2.isAI){
+      p2NameEl.innerHTML = `<span class="swatch"></span>${state.p2.name}`;
+      p2Keypad.classList.add('hidden');
+    } else {
+      p2NameEl.innerHTML = `<span class="swatch"></span>Player 2`;
+      p2Keypad.classList.remove('hidden');
+    }
     document.getElementById('setupOverlay').classList.add('hidden');
     beginCountdown();
   });
@@ -522,11 +601,22 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
   function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
   function newQuestion(key){
     const p = state[key];
+    if(p.aiCancel){ p.aiCancel(); p.aiCancel = null; }
     const q = generateQuestion(p.level);
-    p.qa = { answer: q.answer };
+    const qa = { answer: q.answer };
+    p.qa = qa;
     p.buffer = '';
     document.getElementById(key+'Question').textContent = q.text;
-    document.getElementById(key+'Answer').innerHTML = '&nbsp;';
+    document.getElementById(key+'Answer').innerHTML = p.isAI ? '🤔' : '&nbsp;';
+    if(p.isAI){
+      p.aiCancel = scheduleAIAnswer(p.aiProfile, q, (isCorrect, value) => {
+        p.aiCancel = null;
+        if(state.raceOver || !state.raceRunning) return;
+        if(p.qa !== qa) return; // a new question replaced this one already
+        document.getElementById(key+'Answer').textContent = value;
+        submitAnswer(key, value);
+      });
+    }
   }
 
   // ---------- KEYPADS ----------
@@ -552,10 +642,15 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     document.getElementById(key+'Answer').textContent = p.buffer.length ? p.buffer : '\u00A0';
   }
 
-  function submitAnswer(key){
+  function submitAnswer(key, forcedVal){
     const p = state[key];
-    if(p.buffer === '') return;
-    const val = parseInt(p.buffer, 10);
+    let val;
+    if(forcedVal !== undefined){
+      val = forcedVal;
+    } else {
+      if(p.buffer === '') return;
+      val = parseInt(p.buffer, 10);
+    }
     const panel = document.getElementById('panel-'+key);
     if(val === p.qa.answer){
       p.baseSpeed = Math.min(MAX_BASE, p.baseSpeed + CORRECT_BOOST);
@@ -649,7 +744,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     state.raceOver = true;
     state.raceRunning = false;
     sfx.win();
-    const name = key === 'p1' ? 'Player 1' : 'Player 2';
+    const name = key === 'p1' ? 'Player 1' : (state.p2.isAI ? state.p2.name : 'Player 2');
     document.getElementById('winnerText').textContent = '\uD83C\uDFC1 ' + name + ' Wins!';
     document.getElementById('winnerSub').textContent = 'First to ' + LAPS_TO_WIN + ' laps, practicing ' + levelInfo(state[key].level).label + '.';
     document.getElementById('winnerOverlay').classList.remove('hidden');
