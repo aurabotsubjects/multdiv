@@ -585,6 +585,9 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
   function startRace(){
     state.raceRunning = true;
     lastTime = performance.now();
+    ['p1','p2'].forEach(key=>{
+      if(state[key].isAI) scheduleAIForKey(key);
+    });
     requestAnimationFrame(loop);
   }
 
@@ -599,23 +602,32 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
 
   // ---------- QUESTIONS ----------
   function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+  function scheduleAIForKey(key){
+    const p = state[key];
+    const qa = p.qa;
+    p.aiCancel = scheduleAIAnswer(p.aiProfile, qa, (isCorrect, value) => {
+      p.aiCancel = null;
+      if(state.raceOver) return;
+      if(p.qa !== qa) return; // a new question replaced this one already
+      document.getElementById(key+'Answer').textContent = value;
+      submitAnswer(key, value);
+    });
+  }
+
   function newQuestion(key){
     const p = state[key];
     if(p.aiCancel){ p.aiCancel(); p.aiCancel = null; }
     const q = generateQuestion(p.level);
-    const qa = { answer: q.answer };
-    p.qa = qa;
+    p.qa = { answer: q.answer };
     p.buffer = '';
     document.getElementById(key+'Question').textContent = q.text;
     document.getElementById(key+'Answer').innerHTML = p.isAI ? '🤔' : '&nbsp;';
-    if(p.isAI){
-      p.aiCancel = scheduleAIAnswer(p.aiProfile, q, (isCorrect, value) => {
-        p.aiCancel = null;
-        if(state.raceOver) return;
-        if(p.qa !== qa) return; // a new question replaced this one already
-        document.getElementById(key+'Answer').textContent = value;
-        submitAnswer(key, value);
-      });
+    // Only start the bot's "thinking" clock once the race has actually gone
+    // green — otherwise it can resolve during the starting lights, making it
+    // look like the bot started before the race did. If the race hasn't
+    // started yet, startRace() schedules it the moment it does.
+    if(p.isAI && state.raceRunning){
+      scheduleAIForKey(key);
     }
   }
 

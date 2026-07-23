@@ -37,7 +37,7 @@ export const AI_PROFILES = {
     label: "Champion Bot",
     emoji: "🔴",
     level: 21,          // ÷9 facts, i.e. genuinely tough
-    accuracy: 0.88,
+    accuracy: 0.90,
     minMs: 1500,
     maxMs: 3050,
   },
