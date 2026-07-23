@@ -14,12 +14,12 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDwTGll6gVhKUrx_74TZKoXmZRkxXs72Sw",
-  authDomain: "playermultdiv.firebaseapp.com",
-  projectId: "playermultdiv",
-  storageBucket: "playermultdiv.firebasestorage.app",
-  messagingSenderId: "174880451947",
-  appId: "1:174880451947:web:aea173d802127f0d06302e"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
 // ---- primary app: whoever is "logged in and browsing" (admin, teacher, or

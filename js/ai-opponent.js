@@ -19,27 +19,27 @@ export const AI_PROFILES = {
     label: "Rookie Bot",
     emoji: "🟢",
     level: 3,          // ×4 facts — small, friendly numbers
-    accuracy: 0.86,
+    accuracy: 0.84,
     minMs: 2000,
-    maxMs: 3600,
+    maxMs: 4000,
   },
   medium: {
     key: "medium",
     label: "Racer Bot",
     emoji: "🟡",
     level: 10,          // ×11 facts
-    accuracy: 0.88,
-    minMs: 1500,
-    maxMs: 3050,
+    accuracy: 0.86,
+    minMs: 1750,
+    maxMs: 3500,
   },
   hard: {
     key: "hard",
     label: "Champion Bot",
     emoji: "🔴",
     level: 21,          // ÷9 facts, i.e. genuinely tough
-    accuracy: 0.90,
-    minMs: 1000,
-    maxMs: 2500,
+    accuracy: 0.88,
+    minMs: 1500,
+    maxMs: 3050,
   },
 };
 
