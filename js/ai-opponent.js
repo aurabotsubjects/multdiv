@@ -28,18 +28,18 @@ export const AI_PROFILES = {
     label: "Racer Bot",
     emoji: "🟡",
     level: 10,          // ×11 facts
-    accuracy: 0.90,
-    minMs: 1000,
-    maxMs: 2500,
+    accuracy: 0.88,
+    minMs: 1500,
+    maxMs: 3050,
   },
   hard: {
     key: "hard",
     label: "Champion Bot",
     emoji: "🔴",
     level: 21,          // ÷9 facts, i.e. genuinely tough
-    accuracy: 0.96,
-    minMs: 900,
-    maxMs: 2100,
+    accuracy: 0.90,
+    minMs: 1000,
+    maxMs: 2500,
   },
 };
 
