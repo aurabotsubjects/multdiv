@@ -193,6 +193,7 @@
     font-family:'Baloo 2',sans-serif; font-weight:700; font-size:clamp(1.1rem,2.6vw,1.6rem);
     padding:.55em 0; cursor:pointer; transition:transform .1s, background .12s;
     border:2px solid var(--panel-edge);
+    touch-action: manipulation;
   }
   .key:active{transform:scale(.93);}
   .left .key:active{background:var(--p1-dim);}
@@ -663,7 +664,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
       b.type = 'button';
       b.className = 'key' + (k==='del'?' del':'') + (k==='go'?' go':'');
       b.textContent = k==='del' ? '⌫' : (k==='go' ? 'GO' : k);
-      b.addEventListener('click', ()=> handleKey(num, k));
+      b.addEventListener('pointerdown', (e)=>{ e.preventDefault(); handleKey(num, k); });
       el.appendChild(b);
     });
   }

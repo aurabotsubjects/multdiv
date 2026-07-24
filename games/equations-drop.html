@@ -178,6 +178,7 @@
     width:42px; height:30px; border-radius:8px; border:2px solid var(--panel-border);
     font-family:var(--font-body); font-weight:800; font-size:13px; color:var(--text-light);
     background:rgba(255,255,255,.06); cursor:pointer; flex-shrink:0;
+    touch-action: manipulation;
   }
   .side.p1 .atk-btn:not(:disabled){border-color:var(--p1-core); color:var(--p1-glow);}
   .side.p2 .atk-btn:not(:disabled){border-color:var(--p2-core); color:var(--p2-glow);}
@@ -200,6 +201,7 @@
   .key-btn{
     border-radius:9px; border:2px solid var(--panel-border); background:rgba(255,255,255,.05);
     color:var(--text-light); font-family:var(--font-body); font-weight:800; font-size:16px; cursor:pointer;
+    touch-action: manipulation;
   }
   .side.p1 .key-btn{border-color:rgba(0,229,255,.35);}
   .side.p2 .key-btn{border-color:rgba(255,46,136,.35);}
@@ -536,7 +538,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
         b.className = 'atk-btn';
         b.textContent = '🚀';
         b.disabled = true;
-        b.addEventListener('click', function(){
+        b.addEventListener('pointerdown', function(e){
+          e.preventDefault();
           performAttack(players[pid]);
         });
         col.appendChild(b);
@@ -556,7 +559,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
       if(key === 'clr'){ b.classList.add('clear'); b.textContent = '⌫'; }
       else if(key === 'ent'){ b.classList.add('enter'); b.textContent = '↵'; }
       else { b.textContent = key; }
-      b.addEventListener('click', function(){
+      b.addEventListener('pointerdown', function(e){
+        e.preventDefault();
         var p = players[pid];
         if(!gameActive) return;
         ensureAudio();

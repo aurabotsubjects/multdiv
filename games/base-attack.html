@@ -205,6 +205,7 @@
     font-family:var(--font-display); font-size:clamp(16px,3vw,24px); color:#fff;
     background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.18); border-radius:10px;
     cursor:pointer; display:flex; align-items:center; justify-content:center;
+    touch-action: manipulation;
   }
   .key:active{ background:rgba(255,255,255,.25); transform:scale(.95); }
   .key.enter{ background:var(--good); color:#0a3312; }
@@ -471,7 +472,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
       if(k==='clear'){ b.classList.add('clear'); b.textContent='⌫'; }
       else if(k==='enter'){ b.classList.add('enter'); b.textContent='✓'; }
       else b.textContent = k;
-      b.addEventListener('click', ()=>handleKey(side,k));
+      b.addEventListener('pointerdown', (e)=>{ e.preventDefault(); handleKey(side,k); });
       container.appendChild(b);
     });
   }

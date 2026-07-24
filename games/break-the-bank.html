@@ -439,6 +439,7 @@
     color: #333c4d;
     font-size: 0.9rem;
     cursor: pointer;
+    touch-action: manipulation;
   }
   .nudge-btn:active{ transform: scale(0.9); }
 
@@ -967,7 +968,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   // already showing) resets the 1-second timer, and this can be repeated
   // as many times as needed.
   [1,2].forEach(p => {
-    el(`p${p}-paper`).addEventListener('click', () => {
+    el(`p${p}-paper`).addEventListener('pointerdown', (e) => {
+      e.preventDefault();
       const inner = el(`p${p}-paperinner`);
       clearTimeout(state.paperTimeout[p]);
       inner.classList.add('flipped');
@@ -1032,14 +1034,16 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     dialEl.addEventListener('pointerup', pointerUp);
     dialEl.addEventListener('pointercancel', pointerUp);
 
-    el(`p${player}-up`).addEventListener('click', () => {
+    el(`p${player}-up`).addEventListener('pointerdown', (e) => {
+      e.preventDefault();
       const st = state.players[player];
       st.dialValue = wrapValue(st.dialValue + 1);
       st.visualRot += DEG_PER_STEP;
       dialEl.style.transform = `rotate(${st.visualRot}deg)`;
       el(`p${player}-display`).textContent = st.dialValue;
     });
-    el(`p${player}-down`).addEventListener('click', () => {
+    el(`p${player}-down`).addEventListener('pointerdown', (e) => {
+      e.preventDefault();
       const st = state.players[player];
       st.dialValue = wrapValue(st.dialValue - 1);
       st.visualRot -= DEG_PER_STEP;

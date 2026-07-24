@@ -114,6 +114,7 @@
     font-family:'Chakra Petch',monospace; font-weight:700; font-size:clamp(16px,3vw,22px);
     background:var(--panel-2); color:var(--ink); border:none; border-radius:10px;
     padding:9px 0; cursor:pointer;
+    touch-action: manipulation;
   }
   .key:active{ filter:brightness(1.4); }
   .key.enter{ background: linear-gradient(180deg,#3ecf6e,#2ba852); }
@@ -639,7 +640,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
       const b = document.createElement('button');
       b.className = 'key' + (v==='enter'?' enter':'') + (v==='back'?' back':'');
       b.textContent = v==='enter' ? '\u2713' : (v==='back' ? '\u232B' : v);
-      b.addEventListener('click', ()=> handleKey(key, v));
+      b.addEventListener('pointerdown', (e)=>{ e.preventDefault(); handleKey(key, v); });
       el.appendChild(b);
     });
   }
