@@ -424,6 +424,21 @@
         .action-btn:hover {
             transform: translateY(-2px);
         }
+
+        .p2-mode-toggle { display: flex; gap: 6px; margin-bottom: 4px; }
+        .p2-mode-btn {
+            flex: 1; font-weight: 700; font-size: 0.78rem;
+            background: rgba(0,0,0,0.3); color: #cbd5e1; border: 2px solid transparent; border-radius: 10px;
+            padding: 8px 4px; cursor: pointer;
+        }
+        .p2-mode-btn.active { background: var(--p2-color); color: white; border-color: var(--p2-light); }
+        .p2-diff-grid { display: flex; gap: 6px; }
+        .p2-diff-btn {
+            flex: 1; font-weight: 800; font-size: 0.85rem; color: white;
+            background: rgba(0,0,0,0.3); border: 2px solid transparent; border-radius: 10px;
+            padding: 10px 2px; cursor: pointer; text-align: center;
+        }
+        .p2-diff-btn.sel { background: var(--p2-color); border-color: var(--p2-light); }
     </style>
 </head>
 <body>
@@ -448,6 +463,10 @@
             <!-- Player 2: logs in here -->
             <div class="player-card p2">
                 <h2>🔴 Player 2</h2>
+                <div class="p2-mode-toggle">
+                    <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
+                    <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
+                </div>
                 <div id="p2LoginBox">
                     <div class="form-group">
                         <label>Your name</label>
@@ -459,6 +478,17 @@
                     </div>
                     <div id="p2Err" class="error-text" style="display:none; color:#f87171; font-size:0.85rem;">That password didn't match — try again.</div>
                     <button type="button" class="start-btn" id="p2GoBtn" style="padding:10px 20px; font-size:1rem;">Join</button>
+                </div>
+                <div id="p2AIBox" style="display:none;">
+                    <div class="form-group">
+                        <label>Choose a difficulty</label>
+                        <div class="p2-diff-grid">
+                            <button type="button" class="p2-diff-btn" data-diff="easy">🟢 Easy</button>
+                            <button type="button" class="p2-diff-btn" data-diff="medium">🟡 Medium</button>
+                            <button type="button" class="p2-diff-btn" data-diff="hard">🔴 Hard</button>
+                        </div>
+                    </div>
+                    <div id="p2AIReadout" style="font-weight:bold;"></div>
                 </div>
             </div>
         </div>
@@ -544,6 +574,7 @@
     <script type="module">
         import { levelInfo, generateQuestion } from "../js/levels.js";
         import { getClassRoster, studentLoginSecondPlayer } from "../js/auth.js";
+        import { createAIOpponent, scheduleAIAnswer } from "../js/ai-opponent.js";
 
         const classId = sessionStorage.getItem("ttr_classId");
         if (!classId) window.location.href = "../index.html";
@@ -551,6 +582,8 @@
         const p1Name = sessionStorage.getItem("ttr_name");
         const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
         let p2Level = null;
+        let p2IsAI = false;
+        let p2AIProfile = null;
 
         document.getElementById('p1Readout').textContent = `${p1Name} — ${levelInfo(p1Level).label}`;
         getClassRoster(classId).then(roster => {
@@ -568,6 +601,7 @@
             try {
                 const profile = await studentLoginSecondPlayer(email, password);
                 p2Level = profile.level || 1;
+                p2IsAI = false; p2AIProfile = null;
                 document.getElementById('p2LoginBox').innerHTML =
                     `<div style="padding:10px 0; font-weight:bold;">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
                 state.p2.name = profile.name;
@@ -577,6 +611,37 @@
             } catch (err) {
                 errEl.style.display = 'block';
             }
+        });
+
+        // ---------- PLAYER 2: HUMAN vs COMPUTER MODE ----------
+        function setP2Mode(mode){
+            document.getElementById('p2ModeHuman').classList.toggle('active', mode === 'human');
+            document.getElementById('p2ModeAI').classList.toggle('active', mode === 'ai');
+            document.getElementById('p2LoginBox').style.display = mode === 'human' ? '' : 'none';
+            document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
+            const startBtn = document.getElementById('start-btn');
+            if (mode === 'human') {
+                p2Level = null; p2IsAI = false; p2AIProfile = null;
+                document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+                document.getElementById('p2AIReadout').textContent = '';
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.4';
+            }
+        }
+        document.getElementById('p2ModeHuman').addEventListener('click', () => setP2Mode('human'));
+        document.getElementById('p2ModeAI').addEventListener('click', () => setP2Mode('ai'));
+        document.querySelectorAll('.p2-diff-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+                btn.classList.add('sel');
+                const bot = createAIOpponent(btn.dataset.diff);
+                p2Level = bot.level; p2IsAI = true; p2AIProfile = bot.profile;
+                state.p2.name = bot.name;
+                document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
+                const startBtn = document.getElementById('start-btn');
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+            });
         });
         // Sound Synthesis via Web Audio API
         class SoundManager {
@@ -642,7 +707,7 @@
         // Game State
         const state = {
             p1: { name: 'Player 1', level: 1, score: 0, currentFactor: 0, answer: 0 },
-            p2: { name: 'Player 2', level: 1, score: 0, currentFactor: 0, answer: 0 },
+            p2: { name: 'Player 2', level: 1, score: 0, currentFactor: 0, answer: 0, isAI: false, aiProfile: null, aiCancel: null },
             duration: 60,
             timeLeft: 60,
             speedMultiplier: 1.5,
@@ -829,6 +894,30 @@
             document.getElementById('hud-p2-score').textContent = state.p2.score;
         }
 
+        // ---------- AI OPPONENT (Player 2, when no partner is available) ----------
+        function aiHeartbeat(){
+            if(!state.p2.isAI || !state.isPlaying) return;
+            const target = state.p2.answer;
+            const candidate = state.bubbles.find(b => b.val === target);
+            if(!candidate){
+                const t = setTimeout(aiHeartbeat, 200);
+                state.p2.aiCancel = () => clearTimeout(t);
+                return;
+            }
+            state.p2.aiCancel = scheduleAIAnswer(state.p2.aiProfile, { answer: target }, (isCorrect) => {
+                state.p2.aiCancel = null;
+                if(!state.isPlaying) return;
+                if(isCorrect){
+                    const b = state.bubbles.find(bb => bb.val === state.p2.answer);
+                    if(b) b.pop();
+                } else {
+                    const wrong = state.bubbles.find(bb => bb.val !== state.p2.answer);
+                    if(wrong) wrong.pop();
+                }
+                aiHeartbeat();
+            });
+        }
+
         function startGame() {
             if (!p2Level) return; // Player 2 hasn't logged in yet
             soundManager.init();
@@ -839,6 +928,9 @@
 
             state.p2.level = p2Level;
             state.p2.score = 0;
+            state.p2.isAI = p2IsAI;
+            state.p2.aiProfile = p2AIProfile;
+            if(state.p2.aiCancel){ state.p2.aiCancel(); state.p2.aiCancel = null; }
 
             state.duration = parseInt(document.getElementById('game-duration').value, 10);
             state.timeLeft = state.duration;
@@ -860,6 +952,7 @@
 
             showScreen('game');
             state.isPlaying = true;
+            if(state.p2.isAI) aiHeartbeat();
 
             // Start Game Loop
             state.gameInterval = setInterval(() => {
@@ -898,6 +991,7 @@
             clearInterval(state.gameInterval);
             clearInterval(state.spawnInterval);
             clearInterval(state.timerInterval);
+            if(state.p2.aiCancel){ state.p2.aiCancel(); state.p2.aiCancel = null; }
 
             // Set GameOver Screen Details
             document.getElementById('final-p1-name').textContent = state.p1.name;

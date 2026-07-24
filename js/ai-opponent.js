@@ -82,3 +82,20 @@ export function scheduleAIAnswer(aiPlayerOrProfile, question, callback) {
   const timer = setTimeout(() => callback(value === question.answer, value), delay);
   return () => clearTimeout(timer);
 }
+
+// For multiple-choice / tap-a-button games (e.g. Pong): picks one of the
+// options actually on screen after a simulated delay, instead of an
+// arbitrary numeric offset. Guarantees a wrong pick is still one of the
+// real choices, never an off-list value.
+export function scheduleAIChoice(aiPlayerOrProfile, correctValue, options, callback) {
+  const profile = aiPlayerOrProfile.profile || aiPlayerOrProfile;
+  const delay = profile.minMs + Math.random() * (profile.maxMs - profile.minMs);
+  const willBeCorrect = Math.random() < profile.accuracy;
+  let value = correctValue;
+  if (!willBeCorrect) {
+    const wrongOnes = options.filter((o) => o !== correctValue);
+    if (wrongOnes.length) value = wrongOnes[Math.floor(Math.random() * wrongOnes.length)];
+  }
+  const timer = setTimeout(() => callback(value === correctValue, value), delay);
+  return () => clearTimeout(timer);
+}

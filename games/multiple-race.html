@@ -66,6 +66,7 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { renderPlayer2Login } from "../js/player2-login.js";
+import { scheduleAIAnswer } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
@@ -77,7 +78,7 @@ const players = {
 
 document.getElementById("p1Line").textContent = `${players.a.name} (${levelInfo(players.a.level).label}) is Player 1.`;
 renderPlayer2Login(document.getElementById("p2Container"), classId, players.a.uid).then(profile => {
-  players.b = { uid: profile.uid, name: profile.name, level: profile.level || 1, pos: 0 };
+  players.b = { uid: profile.uid, name: profile.name, level: profile.level || 1, pos: 0, isAI: !!profile.isAI, aiProfile: profile.profile || null };
   document.getElementById("p2Container").innerHTML = `<p class="hint-text">Player 2: ${profile.name} (${levelInfo(players.b.level).label}) ✔️</p>`;
   document.getElementById("startBtn").style.display = "inline-block";
 });
@@ -137,6 +138,15 @@ function updateScoreDisplay() {
 function renderReady() {
   updateScoreDisplay();
   const p = players[currentKey];
+  if (p.isAI) {
+    turnCard.innerHTML = `
+      <div class="label">Up next</div>
+      <div class="big-name">${p.name}</div>
+      <p>On square ${p.pos || "0 — the start line"}. Getting ready for a ${levelInfo(p.level).label} question…</p>
+    `;
+    setTimeout(() => { if (currentKey === (p === players.a ? "a" : "b")) startQuestion(); }, 700);
+    return;
+  }
   turnCard.innerHTML = `
     <div class="label">Pass the device to</div>
     <div class="big-name">${p.name}</div>
@@ -145,11 +155,32 @@ function renderReady() {
   `;
   document.getElementById("readyBtn").addEventListener("click", startQuestion);
 }
+let aiCancel = null;
 function startQuestion() {
   answered = false; typedValue = "";
-  const q = generateQuestion(players[currentKey].level);
+  if (aiCancel) { aiCancel(); aiCancel = null; }
+  const p = players[currentKey];
+  const q = generateQuestion(p.level);
+  if (p.isAI) {
+    turnCard.innerHTML = `
+      <div class="label">${p.name}'s turn</div>
+      <div class="question-display">${q.text} = ?</div>
+      <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
+      <p class="hint-text" style="text-align:center;">🤖 thinking…</p>
+    `;
+    const fill = document.getElementById("timerFill");
+    questionStart = performance.now();
+    requestAnimationFrame(() => { fill.style.transition = "width 5s linear, background 2.5s linear"; fill.style.width = "0%"; fill.classList.add("warn"); });
+    questionTimeout = setTimeout(() => { if (!answered) submitAnswer(null, q.answer, true); }, 5000);
+    aiCancel = scheduleAIAnswer(p.aiProfile, q, (isCorrect, value) => {
+      aiCancel = null;
+      if (answered) return;
+      submitAnswer(value, q.answer, false);
+    });
+    return;
+  }
   turnCard.innerHTML = `
-    <div class="label">${players[currentKey].name}'s turn</div>
+    <div class="label">${p.name}'s turn</div>
     <div class="question-display">${q.text} = ?</div>
     <div class="timer-track"><div class="timer-fill" id="timerFill"></div></div>
     <div class="numpad-display" id="numpadDisplay">&nbsp;</div>

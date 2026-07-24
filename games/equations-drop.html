@@ -92,6 +92,20 @@
   #startBtn.ready{opacity:1; pointer-events:auto;}
   .howto{max-width:760px; font-size:13px; color:var(--text-dim); text-align:center; line-height:1.6; padding:0 8px;}
   .howto b{color:var(--text-light);}
+  .p2-mode-toggle{ display:flex; gap:6px; margin-top:6px; }
+  .p2-mode-btn{
+    flex:1; font-family:var(--font-body); font-weight:700; font-size:12px;
+    background:rgba(255,255,255,.05); color:var(--text-dim); border:2px solid var(--panel-border); border-radius:9px;
+    padding:8px 4px; cursor:pointer;
+  }
+  .p2-mode-btn.active{ background: var(--p2-core); color:#330318; border-color:var(--p2-core); }
+  .p2-diff-grid{ display:flex; gap:6px; margin-top:6px; }
+  .p2-diff-btn{
+    flex:1; font-family:var(--font-body); font-weight:800; font-size:13px; color:var(--text-light);
+    background:rgba(255,255,255,.05); border:2px solid var(--panel-border); border-radius:9px;
+    padding:10px 2px; cursor:pointer; text-align:center;
+  }
+  .p2-diff-btn.sel{ background: var(--p2-core); color:#330318; border-color:var(--p2-core); }
 
   /* ---------- GAME SCREEN ---------- */
   #game{flex-direction:column;}
@@ -257,6 +271,10 @@
       </div>
       <div class="pick-panel p2">
         <div class="pick-title">PLAYER 2 — LOG IN</div>
+        <div class="p2-mode-toggle">
+          <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
+          <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
+        </div>
         <div id="p2LoginBox">
           <div class="chosen-line">Your name</div>
           <select id="p2NameSelect" style="width:100%; padding:8px; border-radius:8px;"><option value="">Loading roster…</option></select>
@@ -264,6 +282,15 @@
           <input type="password" id="p2Password" style="width:100%; padding:8px; border-radius:8px;" />
           <div id="p2Err" style="color:#ff8a8a; font-size:12px; display:none; margin-top:6px;">That password didn't match — try again.</div>
           <button type="button" id="p2GoBtn" style="margin-top:8px; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; font-weight:700;">Join</button>
+        </div>
+        <div id="p2AIBox" style="display:none;">
+          <div class="chosen-line">Choose a difficulty</div>
+          <div class="p2-diff-grid">
+            <button type="button" class="p2-diff-btn" data-diff="easy">🟢 Easy</button>
+            <button type="button" class="p2-diff-btn" data-diff="medium">🟡 Medium</button>
+            <button type="button" class="p2-diff-btn" data-diff="hard">🔴 Hard</button>
+          </div>
+          <div class="chosen-line" id="p2AIReadout"></div>
         </div>
       </div>
     </div>
@@ -351,12 +378,16 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { getClassRoster, studentLoginSecondPlayer } from "../js/auth.js";
+import { createAIOpponent, scheduleAIAnswer } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
 const p1Uid = sessionStorage.getItem("ttr_uid");
 const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
 let p2Level = null;
+let p2IsAI = false;
+let p2AIProfile = null;
+let p2Name = null;
 
 document.getElementById('chosen-p1').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
@@ -374,11 +405,38 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
   try {
     const profile = await studentLoginSecondPlayer(email, password);
     p2Level = profile.level || 1;
+    p2IsAI = false; p2AIProfile = null; p2Name = profile.name;
     document.getElementById('p2LoginBox').innerHTML = `<div class="chosen-line">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__eqDropCheckReady && window.__eqDropCheckReady();
   } catch (err) {
     errEl.style.display = 'block';
   }
+});
+
+// ---------- PLAYER 2: HUMAN vs COMPUTER MODE ----------
+function setP2Mode(mode){
+  document.getElementById('p2ModeHuman').classList.toggle('active', mode === 'human');
+  document.getElementById('p2ModeAI').classList.toggle('active', mode === 'ai');
+  document.getElementById('p2LoginBox').style.display = mode === 'human' ? '' : 'none';
+  document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
+  if (mode === 'human') {
+    p2Level = null; p2IsAI = false; p2AIProfile = null; p2Name = null;
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    document.getElementById('p2AIReadout').textContent = '';
+    window.__eqDropCheckReady && window.__eqDropCheckReady();
+  }
+}
+document.getElementById('p2ModeHuman').addEventListener('click', () => setP2Mode('human'));
+document.getElementById('p2ModeAI').addEventListener('click', () => setP2Mode('ai'));
+document.querySelectorAll('.p2-diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    const bot = createAIOpponent(btn.dataset.diff);
+    p2Level = bot.level; p2IsAI = true; p2AIProfile = bot.profile; p2Name = bot.name;
+    document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
+    window.__eqDropCheckReady && window.__eqDropCheckReady();
+  });
 });
 (function(){
   "use strict";
@@ -448,6 +506,9 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
       correctCount: 0,
       lanes: [false,false,false],
       regularEq: null,
+      isAI: false,
+      aiProfile: null,
+      aiCancel: null,
       playArea: document.getElementById('area-p'+id),
       heartsEl: document.getElementById('hearts-p'+id),
       pipsEl: document.getElementById('pips-p'+id),
@@ -457,6 +518,14 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
   }
 
   function otherPlayer(p){ return p.id === 1 ? players[2] : players[1]; }
+
+  function performAttack(p){
+    if(p.bank <= 0 || !gameActive) return;
+    p.bank -= 1;
+    updateBankUI(p);
+    spawnAttack(p);
+    sfxAttack();
+  }
 
   function buildAttackButtons(){
     [1,2].forEach(function(pid){
@@ -468,12 +537,7 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
         b.textContent = '🚀';
         b.disabled = true;
         b.addEventListener('click', function(){
-          var p = players[pid];
-          if(p.bank <= 0 || !gameActive) return;
-          p.bank -= 1;
-          updateBankUI(p);
-          spawnAttack(p);
-          sfxAttack();
+          performAttack(players[pid]);
         });
         col.appendChild(b);
       }
@@ -669,6 +733,9 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
         showToast(owner, 'BANK OVERLOADED — RESET!');
       }
       updateBankUI(owner);
+      if(owner.isAI && owner.bank > 0){
+        setTimeout(function(){ performAttack(owner); }, 250 + Math.random()*400);
+      }
       setTimeout(function(){ spawnRegular(owner); }, 350);
     }
     // attack correctly defended: nothing extra, just removed
@@ -687,6 +754,32 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     if(owner.lives <= 0){
       endGame(otherPlayer(owner));
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  AI OPPONENT (Player 2, when no partner is available)             */
+  /* ---------------------------------------------------------------- */
+  function aiHeartbeat(pid){
+    var p = players[pid];
+    if(!p.isAI || !gameActive) return;
+    var mine = activeEquations.filter(function(eq){ return eq.owner === p; });
+    if(mine.length === 0){
+      var t = setTimeout(function(){ p.aiCancel = null; aiHeartbeat(pid); }, 400);
+      p.aiCancel = function(){ clearTimeout(t); };
+      return;
+    }
+    mine.sort(function(a,b){ return a.startTime - b.startTime; }); // oldest = closest to the bottom
+    var target = mine[0];
+    p.aiCancel = scheduleAIAnswer(p.aiProfile, { answer: target.answer }, function(isCorrect, value){
+      p.aiCancel = null;
+      if(!gameActive) return;
+      if(activeEquations.indexOf(target) !== -1){
+        p.buffer = String(value);
+        updateReadout(p);
+        checkBuffer(p, true);
+      }
+      aiHeartbeat(pid);
+    });
   }
 
   /* ---------------------------------------------------------------- */
@@ -720,6 +813,8 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
   function startMatch(){
     resetSides();
     players = { 1: makePlayer(1, p1Level), 2: makePlayer(2, p2Level) };
+    players[2].isAI = p2IsAI;
+    players[2].aiProfile = p2AIProfile;
     activeEquations = [];
     eqCounter = 0;
     gameActive = false;
@@ -731,12 +826,20 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     updateReadout(players[1]); updateReadout(players[2]);
     document.getElementById('gameOverOverlay').classList.add('hidden');
 
+    if(players[2].isAI){
+      var keys = document.getElementById('keys-p2');
+      keys.innerHTML = '<div style="grid-column:1/-1; font-size:12px; color:var(--text-dim); text-align:center; padding:6px;">🤖 ' + p2Name + ' is auto-battling</div>';
+    } else {
+      buildKeypad(2);
+    }
+
     runCountdown(function(){
       gameActive = true;
       updateBankUI(players[1]); updateBankUI(players[2]);
       spawnRegular(players[1]);
       spawnRegular(players[2]);
       rafId = requestAnimationFrame(tick);
+      if(players[2].isAI) aiHeartbeat(2);
     });
   }
 

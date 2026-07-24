@@ -102,6 +102,20 @@
   .dot.p1{background:var(--p1); box-shadow:0 0 10px var(--p1-glow);}
   .dot.p2{background:var(--p2); box-shadow:0 0 10px var(--p2-glow);}
   .picker-hint{color:var(--ink-dim); font-size:13px; margin-bottom:10px;}
+  .p2-mode-toggle{ display:flex; gap:6px; margin-bottom:6px; }
+  .p2-mode-btn{
+    flex:1; font-family:'Fredoka',sans-serif; font-weight:600; font-size:12px;
+    background:var(--slot-empty); color:var(--ink-dim); border:2px solid var(--panel-edge); border-radius:10px;
+    padding:8px 4px; cursor:pointer;
+  }
+  .p2-mode-btn.active{ background:var(--p2); color:#3A0813; border-color:var(--p2); }
+  .p2-diff-grid{ display:flex; gap:6px; }
+  .p2-diff-btn{
+    flex:1; font-family:'Fredoka',sans-serif; font-weight:700; font-size:14px; color:var(--ink);
+    background:var(--slot-empty); border:2px solid var(--panel-edge); border-radius:10px;
+    padding:10px 2px; cursor:pointer; text-align:center;
+  }
+  .p2-diff-btn.sel{ background:var(--p2); color:#3A0813; border-color:var(--p2); }
   .num-grid{
     display:grid; grid-template-columns:repeat(4, 1fr); gap:9px; width:100%;
   }
@@ -323,6 +337,10 @@
       </div>
       <div class="picker-card p2">
         <div class="picker-label"><span class="dot p2"></span> Player 2 — log in</div>
+        <div class="p2-mode-toggle">
+          <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
+          <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
+        </div>
         <div id="p2LoginBox">
           <div class="picker-hint">Your name</div>
           <select id="p2NameSelect" style="width:100%; padding:8px; border-radius:8px;"><option value="">Loading roster…</option></select>
@@ -330,6 +348,15 @@
           <input type="password" id="p2Password" style="width:100%; padding:8px; border-radius:8px;" />
           <div id="p2Err" style="color:#ff8a8a; font-size:12px; display:none; margin-top:6px;">That password didn't match — try again.</div>
           <button type="button" id="p2GoBtn" style="margin-top:8px; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; font-weight:700;">Join</button>
+        </div>
+        <div id="p2AIBox" style="display:none;">
+          <div class="picker-hint">Choose a difficulty</div>
+          <div class="p2-diff-grid">
+            <button type="button" class="p2-diff-btn" data-diff="easy">🟢 Easy</button>
+            <button type="button" class="p2-diff-btn" data-diff="medium">🟡 Medium</button>
+            <button type="button" class="p2-diff-btn" data-diff="hard">🔴 Hard</button>
+          </div>
+          <div class="picker-hint" id="p2AIReadout"></div>
         </div>
       </div>
     </div>
@@ -399,12 +426,16 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { getClassRoster, studentLoginSecondPlayer } from "../js/auth.js";
+import { createAIOpponent, scheduleAIAnswer } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
 const p1Uid = sessionStorage.getItem("ttr_uid");
 const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
 let p2Level = null;
+let p2IsAI = false;
+let p2AIProfile = null;
+let p2Name = null;
 
 document.getElementById('p1-readout').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
@@ -422,11 +453,38 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
   try {
     const profile = await studentLoginSecondPlayer(email, password);
     p2Level = profile.level || 1;
+    p2IsAI = false; p2AIProfile = null; p2Name = profile.name;
     document.getElementById('p2LoginBox').innerHTML = `<div class="picker-hint">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__sc4CheckStart && window.__sc4CheckStart();
   } catch (err) {
     errEl.style.display = 'block';
   }
+});
+
+// ---------- PLAYER 2: HUMAN vs COMPUTER MODE ----------
+function setP2Mode(mode){
+  document.getElementById('p2ModeHuman').classList.toggle('active', mode === 'human');
+  document.getElementById('p2ModeAI').classList.toggle('active', mode === 'ai');
+  document.getElementById('p2LoginBox').style.display = mode === 'human' ? '' : 'none';
+  document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
+  if (mode === 'human') {
+    p2Level = null; p2IsAI = false; p2AIProfile = null; p2Name = null;
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    document.getElementById('p2AIReadout').textContent = '';
+    window.__sc4CheckStart && window.__sc4CheckStart();
+  }
+}
+document.getElementById('p2ModeHuman').addEventListener('click', () => setP2Mode('human'));
+document.getElementById('p2ModeAI').addEventListener('click', () => setP2Mode('ai'));
+document.querySelectorAll('.p2-diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    const bot = createAIOpponent(btn.dataset.diff);
+    p2Level = bot.level; p2IsAI = true; p2AIProfile = bot.profile; p2Name = bot.name;
+    document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
+    window.__sc4CheckStart && window.__sc4CheckStart();
+  });
 });
 (function(){
   "use strict";
@@ -435,8 +493,8 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
 
   const state = {
     players: [
-      {id:'p1', level:null, roundWins:0, score:0, typed:'', current:null, pending:false, disabled:true},
-      {id:'p2', level:null, roundWins:0, score:0, typed:'', current:null, pending:false, disabled:true}
+      {id:'p1', level:null, roundWins:0, score:0, typed:'', current:null, pending:false, disabled:true, isAI:false, aiProfile:null, aiCancel:null},
+      {id:'p2', level:null, roundWins:0, score:0, typed:'', current:null, pending:false, disabled:true, isAI:false, aiProfile:null, aiCancel:null}
     ],
     board: [],       // board[row][col] = 'p1'|'p2'|null   row 0 = top
     pendingQueue: [], // indices into state.players (0 or 1) waiting to drop
@@ -460,6 +518,8 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
   startBtn.addEventListener('click', ()=>{
     state.players[0].level = p1Level;
     state.players[1].level = p2Level;
+    state.players[1].isAI = p2IsAI;
+    state.players[1].aiProfile = p2AIProfile;
     document.getElementById('p1-table').textContent = levelInfo(p1Level).label;
     document.getElementById('p2-table').textContent = levelInfo(p2Level).label;
     showScreen('game-screen');
@@ -575,6 +635,28 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p.typed = '';
     document.getElementById(p.id+'-equation').textContent = q.text+' = ?';
     updateTypedDisplay(idx);
+    if(p.aiCancel){ p.aiCancel(); p.aiCancel = null; }
+    if(p.isAI) scheduleAIEquationAttempt(idx);
+  }
+
+  // The bot keeps re-guessing (fresh simulated delay each time) until it
+  // gets its own equation right or the round ends — mirrors a human free to
+  // keep retrying since there's no per-question timer in this game.
+  function scheduleAIEquationAttempt(idx){
+    const p = state.players[idx];
+    if(p.aiCancel){ p.aiCancel(); p.aiCancel = null; }
+    if(!p.isAI || state.roundOver || state.matchOver) return;
+    const qa = p.current;
+    p.aiCancel = scheduleAIAnswer(p.aiProfile, { answer: qa.answer }, (isCorrect, value) => {
+      p.aiCancel = null;
+      if(state.roundOver || state.matchOver) return;
+      if(p.current !== qa) return; // a new equation replaced this one already
+      if(p.disabled) return; // already answered correctly and waiting to drop
+      p.typed = String(value);
+      updateTypedDisplay(idx);
+      submitAnswer(idx);
+      if(!p.disabled) scheduleAIEquationAttempt(idx); // wrong guess — try again
+    });
   }
 
   function updateTypedDisplay(idx){
@@ -646,14 +728,57 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
 
   function activateColumnChoice(idx){
     const p = state.players[idx];
-    setStatus(idx, "🎯 Correct! Pick a column below!");
     document.getElementById('panel-'+p.id).classList.add('active-turn');
+    if(p.isAI){
+      setStatus(idx, "🎯 Correct! Choosing a column…");
+      arrowButtons.forEach(btn=>{ btn.disabled = true; btn.classList.remove('armed-p1','armed-p2'); });
+      const delay = 400 + Math.random()*500;
+      const t = setTimeout(()=>{
+        p.aiCancel = null;
+        if(state.roundOver || state.matchOver) return;
+        if(state.pendingQueue[0] !== idx) return;
+        const col = aiChooseColumn(idx);
+        if(col !== null) handleColumnClick(col);
+      }, delay);
+      p.aiCancel = ()=>clearTimeout(t);
+      return;
+    }
+    setStatus(idx, "🎯 Correct! Pick a column below!");
     arrowButtons.forEach((btn, c)=>{
       const full = state.board[0][c] !== null;
       btn.disabled = full;
       btn.classList.remove('armed-p1','armed-p2');
       if(!full) btn.classList.add('armed-'+p.id);
     });
+  }
+
+  // Basic strategy: take an immediate win, else block the opponent's
+  // immediate win, else prefer a column near the center with a little
+  // randomness so it's not perfectly predictable.
+  function findDropRow(col){
+    for(let r=ROWS-1; r>=0; r--){ if(state.board[r][col] === null) return r; }
+    return -1;
+  }
+  function wouldWin(col, playerId){
+    const r = findDropRow(col);
+    if(r === -1) return false;
+    state.board[r][col] = playerId;
+    const win = checkWin(r, col, playerId);
+    state.board[r][col] = null;
+    return !!win;
+  }
+  function aiChooseColumn(idx){
+    const p = state.players[idx];
+    const oppId = state.players[idx === 0 ? 1 : 0].id;
+    const openCols = [];
+    for(let c=0; c<COLS; c++){ if(state.board[0][c] === null) openCols.push(c); }
+    if(!openCols.length) return null;
+    for(const c of openCols){ if(wouldWin(c, p.id)) return c; }
+    for(const c of openCols){ if(wouldWin(c, oppId)) return c; }
+    const center = Math.floor(COLS/2);
+    openCols.sort((a,b)=> Math.abs(a-center)-Math.abs(b-center));
+    const top = openCols.slice(0, Math.min(3, openCols.length));
+    return top[Math.floor(Math.random()*top.length)];
   }
 
   function deactivateColumnChoice(idx){

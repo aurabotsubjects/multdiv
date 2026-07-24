@@ -123,6 +123,20 @@
   }
   #start-btn:disabled{opacity:.35; filter:grayscale(.5); cursor:not-allowed;}
   #start-btn:not(:disabled):active{transform:scale(.96);}
+  .p2-mode-toggle{ display:flex; gap:.5em; width:88%; margin-bottom:.6vh; }
+  .p2-mode-btn{
+    flex:1; font-family:'Rubik',sans-serif; font-weight:700; font-size:.78rem;
+    background:#181633; color:var(--ink-dim); border:2px solid var(--panel-edge); border-radius:10px;
+    padding:.55em .2em; cursor:pointer;
+  }
+  .p2-mode-btn.active{ background:var(--p2); color:#2c0e00; border-color:var(--p2); }
+  .p2-diff-grid{ display:flex; gap:.5em; width:88%; }
+  .p2-diff-btn{
+    flex:1; font-family:'Baloo 2',sans-serif; font-weight:700; font-size:.9rem; color:var(--ink);
+    background:#181633; border:2px solid var(--panel-edge); border-radius:10px;
+    padding:.6em .2em; cursor:pointer; text-align:center;
+  }
+  .p2-diff-btn.sel{ background:var(--p2); color:#2c0e00; border-color:var(--p2); }
 
   /* ============ GAME SCREEN ============ */
   #game-screen{flex-direction:row; padding:1.4vh 1.4vw; gap:1.2vw;}
@@ -304,6 +318,10 @@
     </div>
     <div class="setup-player pl2">
       <h2>Player 2</h2>
+      <div class="p2-mode-toggle">
+        <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
+        <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
+      </div>
       <div id="p2LoginBox">
         <div class="table-label">Your name</div>
         <select class="name-input" id="p2NameSelect" style="width:100%;"><option value="">Loading roster…</option></select>
@@ -311,6 +329,15 @@
         <input type="password" class="name-input" id="p2Password" style="width:100%;" />
         <div id="p2Err" style="color:#ff8a8a; font-size:12px; display:none; margin-top:6px;">That password didn't match — try again.</div>
         <button type="button" id="p2GoBtn" style="margin-top:10px; padding:10px 20px; border-radius:10px; border:none; cursor:pointer; font-weight:700;">Join</button>
+      </div>
+      <div id="p2AIBox" style="display:none;">
+        <div class="table-label">Choose a difficulty</div>
+        <div class="p2-diff-grid">
+          <button type="button" class="p2-diff-btn" data-diff="easy">🟢 Easy</button>
+          <button type="button" class="p2-diff-btn" data-diff="medium">🟡 Medium</button>
+          <button type="button" class="p2-diff-btn" data-diff="hard">🔴 Hard</button>
+        </div>
+        <div class="table-label" id="p2AIReadout"></div>
       </div>
     </div>
   </div>
@@ -379,13 +406,14 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { getClassRoster, studentLoginSecondPlayer } from "../js/auth.js";
+import { createAIOpponent, scheduleAIAnswer } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
 const p1Uid = sessionStorage.getItem("ttr_uid");
 const p1Name = sessionStorage.getItem("ttr_name");
 const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
-let p2Name = null, p2Level = null;
+let p2Name = null, p2Level = null, p2IsAI = false, p2AIProfile = null;
 
 document.getElementById('p1Readout').textContent = `${p1Name} — ${levelInfo(p1Level).label}`;
 getClassRoster(classId).then(roster => {
@@ -404,12 +432,39 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     const profile = await studentLoginSecondPlayer(email, password);
     p2Name = profile.name;
     p2Level = profile.level || 1;
+    p2IsAI = false; p2AIProfile = null;
     document.getElementById('p2LoginBox').innerHTML =
       `<div class="name-input" style="display:flex; align-items:center;">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__pindropCheckStart && window.__pindropCheckStart();
   } catch (err) {
     errEl.style.display = 'block';
   }
+});
+
+// ---------- PLAYER 2: HUMAN vs COMPUTER MODE ----------
+function setP2Mode(mode){
+  document.getElementById('p2ModeHuman').classList.toggle('active', mode === 'human');
+  document.getElementById('p2ModeAI').classList.toggle('active', mode === 'ai');
+  document.getElementById('p2LoginBox').style.display = mode === 'human' ? '' : 'none';
+  document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
+  if (mode === 'human') {
+    p2Name = null; p2Level = null; p2IsAI = false; p2AIProfile = null;
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    document.getElementById('p2AIReadout').textContent = '';
+    window.__pindropCheckStart && window.__pindropCheckStart();
+  }
+}
+document.getElementById('p2ModeHuman').addEventListener('click', () => setP2Mode('human'));
+document.getElementById('p2ModeAI').addEventListener('click', () => setP2Mode('ai'));
+document.querySelectorAll('.p2-diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    const bot = createAIOpponent(btn.dataset.diff);
+    p2Name = bot.name; p2Level = bot.level; p2IsAI = true; p2AIProfile = bot.profile;
+    document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
+    window.__pindropCheckStart && window.__pindropCheckStart();
+  });
 });
 (function(){
   "use strict";
@@ -470,6 +525,7 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
       num, level, name: name || ('Player '+num),
       score:0, lives:3, alive:true,
       answerBuffer:'', current:{a:0,b:0,symbol:'×',answer:0},
+      isAI:false, aiProfile:null, aiCancel:null,
     };
   }
 
@@ -555,6 +611,16 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p.answerBuffer = '';
     renderQuestion(p);
     renderAnswer(p);
+    if(p.aiCancel){ p.aiCancel(); p.aiCancel = null; }
+    if(p.isAI){
+      p.aiCancel = scheduleAIAnswer(p.aiProfile, { answer: p.current.answer }, (isCorrect, value) => {
+        p.aiCancel = null;
+        if(!p.alive) return;
+        p.answerBuffer = String(value);
+        renderAnswer(p);
+        submitAnswer(p);
+      });
+    }
   }
 
   function renderQuestion(p){
@@ -715,6 +781,8 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
       p1: makePlayer(1, p1Level, p1Name),
       p2: makePlayer(2, p2Level, p2Name),
     };
+    state.p2.isAI = p2IsAI;
+    state.p2.aiProfile = p2AIProfile;
     document.getElementById('pname1').textContent = state.p1.name;
     document.getElementById('pname2').textContent = state.p2.name;
     document.getElementById('out1').classList.remove('show');

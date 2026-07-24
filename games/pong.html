@@ -80,6 +80,7 @@
 <script type="module">
 import { levelInfo, generateQuestion } from "../js/levels.js";
 import { renderPlayer2Login } from "../js/player2-login.js";
+import { scheduleAIChoice } from "../js/ai-opponent.js";
 
 const classId = sessionStorage.getItem("ttr_classId");
 if (!classId) window.location.href = "../index.html";
@@ -91,10 +92,21 @@ const players = {
 
 document.getElementById("p1Line").textContent = `${players.a.name} (${levelInfo(players.a.level).label}) is the left player.`;
 renderPlayer2Login(document.getElementById("p2Container"), classId, players.a.uid).then(profile => {
-  players.b = { uid: profile.uid, name: profile.name, level: profile.level || 1 };
+  players.b = { uid: profile.uid, name: profile.name, level: profile.level || 1, isAI: !!profile.isAI, aiProfile: profile.profile || null };
   document.getElementById("p2Container").innerHTML = `<p class="hint-text">Right player: ${profile.name} (${levelInfo(players.b.level).label}) ✔️</p>`;
   document.getElementById("startBtn").style.display = "inline-block";
 });
+
+// Per-difficulty paddle-tracking skill for the AI's joystick control (separate
+// from its answer accuracy/speed) — how fast it can move and how precisely
+// it aims at the ball while its paddle is active.
+const AI_PADDLE_SKILL = {
+  easy:   { maxSpeed: 55,  wobble: 14 },
+  medium: { maxSpeed: 80,  wobble: 7 },
+  hard:   { maxSpeed: 105, wobble: 2 },
+};
+let aiChoiceCancel = null;
+let aiAim = { a: 0, b: 0 }, aiAimTimer = { a: 0, b: 0 };
 
 const setupPanel = document.getElementById("setupPanel");
 const matchArea = document.getElementById("matchArea");
@@ -158,11 +170,26 @@ function serve(toKey) {
 }
 
 function newQuestionFor(key) {
+  if (aiChoiceCancel) { aiChoiceCancel(); aiChoiceCancel = null; }
   const q = generateQuestion(players[key].level);
   currentAnswer = { correct: q.answer, resolved: false };
+  const qa = currentAnswer;
   const options = buildOptions(q.answer);
   const panel = panelEls[key];
   panel.classList.remove("dim");
+  if (players[key].isAI) {
+    panel.innerHTML = `
+      <div class="name-tag">${players[key].name}</div>
+      <div class="equation">${q.text} = ?</div>
+      <p class="waiting-txt">🤖 thinking…</p>
+    `;
+    aiChoiceCancel = scheduleAIChoice(players[key].aiProfile, q.answer, options, (isCorrect, value) => {
+      aiChoiceCancel = null;
+      if (currentAnswer !== qa || qa.resolved) return;
+      handleAnswer(key, value);
+    });
+    return;
+  }
   panel.innerHTML = `
     <div class="name-tag">${players[key].name}</div>
     <div class="equation">${q.text} = ?</div>
@@ -187,7 +214,11 @@ function handleAnswer(key, value) {
   if (value === currentAnswer.correct) {
     paddleState[key] = "active";
     renderPaddles();
-    showJoystick(key);
+    if (players[key].isAI) {
+      panel.innerHTML = `<div class="name-tag">${players[key].name}</div><div class="waiting-txt">🤖 rallying…</div>`;
+    } else {
+      showJoystick(key);
+    }
   } else {
     paddleState[key] = "disabled";
     renderPaddles();
@@ -256,11 +287,23 @@ function loop(ts) {
   lastTs = ts;
 
   ["a", "b"].forEach(key => {
-    if (paddleState[key] === "active" && joyVel[key] !== 0) {
+    if (paddleState[key] !== "active") return;
+    const half = PADDLE_HEIGHT_PCT / 2;
+    if (players[key] && players[key].isAI) {
+      const skill = AI_PADDLE_SKILL[players[key].aiProfile.key] || AI_PADDLE_SKILL.medium;
+      aiAimTimer[key] -= dt;
+      if (aiAimTimer[key] <= 0) {
+        aiAim[key] = (Math.random() * 2 - 1) * skill.wobble;
+        aiAimTimer[key] = 0.25 + Math.random() * 0.25;
+      }
+      const targetY = Math.max(half, Math.min(100 - half, ball.y + aiAim[key]));
+      const diff = targetY - paddleY[key];
+      const vel = Math.max(-skill.maxSpeed, Math.min(skill.maxSpeed, diff * 8));
+      paddleY[key] += vel * dt;
+    } else if (joyVel[key] !== 0) {
       paddleY[key] += joyVel[key] * dt;
-      const half = PADDLE_HEIGHT_PCT / 2;
-      paddleY[key] = Math.max(half, Math.min(100 - half, paddleY[key]));
     }
+    paddleY[key] = Math.max(half, Math.min(100 - half, paddleY[key]));
   });
   renderPaddles();
 
