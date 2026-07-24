@@ -14,7 +14,10 @@
 <div class="app-shell">
   <div class="chrome-bar">
     <div class="brand"><span class="flag">🏁</span> Times Tables Race</div>
-    <div class="who" id="whoBar"></div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div class="who" id="whoBar"></div>
+      <a href="#" id="logoutLink" class="btn ghost" style="padding:8px 14px; font-size:0.8rem; text-decoration:none;">Log out</a>
+    </div>
   </div>
   <div class="stripe"></div>
 
@@ -54,6 +57,15 @@ document.getElementById("whoBar").textContent = `${name} · ${sessionStorage.get
 document.getElementById("greeting").textContent = `Hi, ${name}!`;
 
 document.getElementById("testBtn").addEventListener("click", () => window.location.href = "test.html");
+
+import("./js/auth.js").then(({ logout }) => {
+  document.getElementById("logoutLink").addEventListener("click", async (e) => {
+    e.preventDefault();
+    try { await logout(); } catch (err) { /* ignore — clearing session below is what matters */ }
+    sessionStorage.clear();
+    window.location.href = "index.html";
+  });
+});
 
 const games = [
   { emoji: "🏁", name: "Multiple Race", href: "games/multiple-race.html", ready: true },

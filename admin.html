@@ -22,6 +22,7 @@
 
   <div class="page">
     <div class="panel" id="loginPanel">
+      <a href="index.html" class="btn ghost" style="display:inline-block; margin-bottom:14px; padding:8px 14px; font-size:0.85rem; text-decoration:none;">← Back</a>
       <h1>Admin sign-in</h1>
       <p>This is the one account used to approve teacher accounts.</p>
       <div style="margin-top:14px; display:flex; flex-direction:column; gap:10px;">
@@ -65,7 +66,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
       throw new Error("This account isn't set up as an admin.");
     }
     whoBar.innerHTML = `${profile.name} · <a href="#" id="logoutLink" style="text-decoration:underline;">Sign out</a>`;
-    document.getElementById("logoutLink").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
+    document.getElementById("logoutLink").addEventListener("click", async (e) => { e.preventDefault(); await logout(); location.reload(); });
     loginPanel.style.display = "none";
     pendingPanel.style.display = "block";
     approvedPanel.style.display = "block";

@@ -25,6 +25,7 @@
 
   <div class="page">
     <div class="panel" id="loginPanel">
+      <a href="index.html" class="btn ghost" style="display:inline-block; margin-bottom:14px; padding:8px 14px; font-size:0.85rem; text-decoration:none;">← Back</a>
       <h1>Teacher sign-in</h1>
       <p>Use the email and password your admin set up for you.</p>
       <div style="margin-top:14px; display:flex; flex-direction:column; gap:10px;">
@@ -106,7 +107,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     const profile = await teacherLogin(email, password);
     teacherId = profile.uid;
     whoBar.innerHTML = `${profile.name} · <a href="#" id="logoutLink" style="text-decoration:underline;">Sign out</a>`;
-    document.getElementById("logoutLink").addEventListener("click", (e) => { e.preventDefault(); location.reload(); });
+    document.getElementById("logoutLink").addEventListener("click", async (e) => { e.preventDefault(); await logout(); location.reload(); });
     loginPanel.style.display = "none";
     dashboard.style.display = "flex";
     await loadClasses();
