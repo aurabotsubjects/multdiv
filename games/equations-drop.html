@@ -321,7 +321,7 @@
         <div class="side-inner">
           <div class="side-header">
             <div class="head-block">
-              <div class="player-name">PLAYER 1</div>
+              <div class="player-name" id="name-p1">PLAYER 1</div>
               <div class="table-label" id="label-p1">×0 Table</div>
             </div>
             <div class="head-block" style="align-items:flex-end;">
@@ -345,7 +345,7 @@
         <div class="side-inner">
           <div class="side-header">
             <div class="head-block" style="align-items:flex-start;">
-              <div class="player-name">PLAYER 2</div>
+              <div class="player-name" id="name-p2">PLAYER 2</div>
               <div class="table-label" id="label-p2">×0 Table</div>
             </div>
             <div class="head-block" style="align-items:flex-end;">
@@ -832,6 +832,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     eqCounter = 0;
     gameActive = false;
 
+    document.getElementById('name-p1').textContent = p1Name;
+    document.getElementById('name-p2').textContent = p2Name || 'PLAYER 2';
     document.getElementById('label-p1').textContent = levelInfo(players[1].level).label;
     document.getElementById('label-p2').textContent = levelInfo(players[2].level).label;
     updateHeartsUI(players[1]); updateHeartsUI(players[2]);
@@ -892,7 +894,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     }
     var overlay = document.getElementById('gameOverOverlay');
     var title = document.getElementById('winnerTitle');
-    title.textContent = 'PLAYER ' + winner.id + ' WINS!';
+    var winnerName = winner.id === 1 ? p1Name : (p2Name || 'PLAYER 2');
+    title.textContent = winnerName.toUpperCase() + ' WINS!';
     title.className = 'winner-title ' + (winner.id===1 ? 'win-p1':'win-p2');
     overlay.classList.remove('hidden');
   }

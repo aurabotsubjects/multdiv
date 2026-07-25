@@ -435,11 +435,11 @@
 
     <div class="setup-grid">
       <div class="player-panel p1">
-        <div class="panel-head"><span class="dot"></span><h2>Player 1</h2></div>
+        <div class="panel-head"><span class="dot"></span><h2 id="p1-heading">Player 1</h2></div>
         <div class="name-input" id="p1Readout" style="display:flex; align-items:center;">Loading your profile…</div>
       </div>
       <div class="player-panel p2">
-        <div class="panel-head"><span class="dot"></span><h2>Player 2</h2></div>
+        <div class="panel-head"><span class="dot"></span><h2 id="p2-heading">Player 2</h2></div>
         <div class="p2-mode-toggle">
           <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
           <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
@@ -541,6 +541,7 @@ const p1Name = sessionStorage.getItem("ttr_name");
 const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
 let p2Name = null, p2Level = null, p2Uid = null, p2IsAI = false, p2AIProfile = null;
 
+document.getElementById('p1-heading').textContent = p1Name;
 document.getElementById('p1Readout').textContent = `${p1Name} — ${levelInfo(p1Level).label}`;
 getClassRoster(classId).then(roster => {
   const sel = document.getElementById('p2NameSelect');
@@ -560,6 +561,7 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p2Level = profile.level || 1;
     p2Uid = profile.uid;
     p2IsAI = false; p2AIProfile = null;
+    document.getElementById('p2-heading').textContent = profile.name;
     document.getElementById('p2LoginBox').innerHTML =
       `<div class="name-input" style="display:flex; align-items:center;">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__memoryRefreshStart && window.__memoryRefreshStart();
@@ -576,6 +578,7 @@ function setP2Mode(mode){
   document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
   if (mode === 'human') {
     p2Name = null; p2Level = null; p2IsAI = false; p2AIProfile = null;
+    document.getElementById('p2-heading').textContent = 'Player 2';
     document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
     document.getElementById('p2AIReadout').textContent = '';
     window.__memoryRefreshStart && window.__memoryRefreshStart();
@@ -589,6 +592,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     btn.classList.add('sel');
     const bot = createAIOpponent(btn.dataset.diff);
     p2Name = bot.name; p2Level = bot.level; p2IsAI = true; p2AIProfile = applyAISettings(bot.profile, "memory", await aiSettingsPromise);
+    document.getElementById('p2-heading').textContent = bot.name;
     document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
     window.__memoryRefreshStart && window.__memoryRefreshStart();
   });

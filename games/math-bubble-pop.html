@@ -465,7 +465,7 @@
         <div class="players-setup">
             <!-- Player 1: auto from login -->
             <div class="player-card p1">
-                <h2>🔵 Player 1</h2>
+                <h2 id="p1-heading">🔵 Player 1</h2>
                 <div class="form-group">
                     <label>You</label>
                     <div id="p1Readout" style="padding:10px 0; font-weight:bold;">Loading your profile…</div>
@@ -474,7 +474,7 @@
 
             <!-- Player 2: logs in here -->
             <div class="player-card p2">
-                <h2>🔴 Player 2</h2>
+                <h2 id="p2-heading">🔴 Player 2</h2>
                 <div class="p2-mode-toggle">
                     <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
                     <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
@@ -602,6 +602,7 @@
         let p2IsAI = false;
         let p2AIProfile = null;
 
+        document.getElementById('p1-heading').textContent = `🔵 ${p1Name}`;
         document.getElementById('p1Readout').textContent = `${p1Name} — ${levelInfo(p1Level).label}`;
         getClassRoster(classId).then(roster => {
             const sel = document.getElementById('p2NameSelect');
@@ -620,6 +621,7 @@
                 p2Level = profile.level || 1;
                 p2Uid = profile.uid;
                 p2IsAI = false; p2AIProfile = null;
+                document.getElementById('p2-heading').textContent = `🔴 ${profile.name}`;
                 document.getElementById('p2LoginBox').innerHTML =
                     `<div style="padding:10px 0; font-weight:bold;">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
                 state.p2.name = profile.name;
@@ -640,6 +642,7 @@
             const startBtn = document.getElementById('start-btn');
             if (mode === 'human') {
                 p2Level = null; p2IsAI = false; p2AIProfile = null;
+                document.getElementById('p2-heading').textContent = '🔴 Player 2';
                 document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
                 document.getElementById('p2AIReadout').textContent = '';
                 startBtn.disabled = true;
@@ -655,6 +658,7 @@
                 const bot = createAIOpponent(btn.dataset.diff);
                 p2Level = bot.level; p2IsAI = true; p2AIProfile = applyAISettings(bot.profile, "math-bubble-pop", await aiSettingsPromise);
                 state.p2.name = bot.name;
+                document.getElementById('p2-heading').textContent = `🔴 ${bot.name}`;
                 document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
                 const startBtn = document.getElementById('start-btn');
                 startBtn.disabled = false;

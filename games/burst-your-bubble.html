@@ -270,7 +270,7 @@
     <div class="panel p2">
       <div class="panel-head">
         <div class="avatar">2</div>
-        <div style="font-weight:800;">Player 2</div>
+        <div style="font-weight:800;" id="p2-heading">Player 2</div>
       </div>
       <div class="p2-mode-toggle">
         <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
@@ -376,6 +376,7 @@
       p2Level = profile.level || 1;
       p2Uid = profile.uid;
       p2IsAI = false; p2AIProfile = null;
+      document.getElementById('p2-heading').textContent = profile.name;
       document.getElementById('p2LoginBox').innerHTML =
         `<div class="name-input" style="display:flex; align-items:center;">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
       window.__bubbleUpdateStartState && window.__bubbleUpdateStartState();
@@ -392,6 +393,7 @@
     document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
     if (mode === 'human') {
       p2Name = null; p2Level = null; p2IsAI = false; p2AIProfile = null;
+      document.getElementById('p2-heading').textContent = 'Player 2';
       document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
       document.getElementById('p2AIReadout').textContent = '';
       window.__bubbleUpdateStartState && window.__bubbleUpdateStartState();
@@ -405,6 +407,7 @@
       btn.classList.add('sel');
       const bot = createAIOpponent(btn.dataset.diff);
       p2Name = bot.name; p2Level = bot.level; p2IsAI = true; p2AIProfile = applyAISettings(bot.profile, "burst-your-bubble", await aiSettingsPromise);
+      document.getElementById('p2-heading').textContent = bot.name;
       document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
       window.__bubbleUpdateStartState && window.__bubbleUpdateStartState();
     });

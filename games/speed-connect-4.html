@@ -335,11 +335,11 @@
     <div class="flagstrip"></div>
     <div class="setup-pickers">
       <div class="picker-card p1">
-        <div class="picker-label"><span class="dot p1"></span> Player 1</div>
+        <div class="picker-label" id="p1-picker-label"><span class="dot p1"></span> Player 1</div>
         <div class="picker-hint" id="p1-readout">Loading your profile…</div>
       </div>
       <div class="picker-card p2">
-        <div class="picker-label"><span class="dot p2"></span> Player 2 — log in</div>
+        <div class="picker-label" id="p2-picker-label"><span class="dot p2"></span> Player 2 — log in</div>
         <div class="p2-mode-toggle">
           <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
           <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
@@ -380,7 +380,7 @@
     <div class="game-body">
       <!-- Player 1 panel -->
       <div class="player-panel p1" id="panel-p1">
-        <div class="player-name">Player 1 · <span id="p1-table"></span></div>
+        <div class="player-name"><span id="p1-name-label">Player 1</span> · <span id="p1-table"></span></div>
         <div class="equation-box" id="p1-equation">? × ? = ?</div>
         <div class="typed-display" id="p1-typed">&nbsp;</div>
         <div class="status-msg" id="p1-status">Get ready…</div>
@@ -395,7 +395,7 @@
 
       <!-- Player 2 panel -->
       <div class="player-panel p2" id="panel-p2">
-        <div class="player-name">Player 2 · <span id="p2-table"></span></div>
+        <div class="player-name"><span id="p2-name-label">Player 2</span> · <span id="p2-table"></span></div>
         <div class="equation-box" id="p2-equation">? × ? = ?</div>
         <div class="typed-display" id="p2-typed">&nbsp;</div>
         <div class="status-msg" id="p2-status">Get ready…</div>
@@ -446,6 +446,8 @@ let p2IsAI = false;
 let p2AIProfile = null;
 let p2Name = null;
 
+document.getElementById('p1-picker-label').innerHTML = `<span class="dot p1"></span> ${p1Name}`;
+document.getElementById('p1-name-label').textContent = p1Name;
 document.getElementById('p1-readout').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
   const sel = document.getElementById('p2NameSelect');
@@ -464,6 +466,8 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p2Level = profile.level || 1;
     p2Uid = profile.uid;
     p2IsAI = false; p2AIProfile = null; p2Name = profile.name;
+    document.getElementById('p2-picker-label').innerHTML = `<span class="dot p2"></span> ${profile.name}`;
+    document.getElementById('p2-name-label').textContent = profile.name;
     document.getElementById('p2LoginBox').innerHTML = `<div class="picker-hint">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__sc4CheckStart && window.__sc4CheckStart();
   } catch (err) {
@@ -479,6 +483,8 @@ function setP2Mode(mode){
   document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
   if (mode === 'human') {
     p2Level = null; p2IsAI = false; p2AIProfile = null; p2Name = null;
+    document.getElementById('p2-picker-label').innerHTML = '<span class="dot p2"></span> Player 2 — log in';
+    document.getElementById('p2-name-label').textContent = 'Player 2';
     document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
     document.getElementById('p2AIReadout').textContent = '';
     window.__sc4CheckStart && window.__sc4CheckStart();
@@ -492,6 +498,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     btn.classList.add('sel');
     const bot = createAIOpponent(btn.dataset.diff);
     p2Level = bot.level; p2IsAI = true; p2AIProfile = applyAISettings(bot.profile, "speed-connect-4", await aiSettingsPromise); p2Name = bot.name;
+    document.getElementById('p2-picker-label').innerHTML = `<span class="dot p2"></span> ${bot.name}`;
+    document.getElementById('p2-name-label').textContent = bot.name;
     document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
     window.__sc4CheckStart && window.__sc4CheckStart();
   });
@@ -925,7 +933,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   }
 
   function showRoundModal(idx){
-    const name = idx===0 ? 'Player 1' : 'Player 2';
+    const name = idx===0 ? p1Name : (p2Name || 'Player 2');
     document.getElementById('round-modal-title').textContent = (idx===0?'🟢 ':'🔴 ') + name + ' wins the round!';
     document.getElementById('round-modal-sub').textContent = 'Get ready for round ' + (state.round+1) + '.';
     document.getElementById('round-modal').classList.add('active');
@@ -940,7 +948,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   });
 
   function showMatchModal(idx){
-    const name = idx===0 ? 'Player 1' : 'Player 2';
+    const name = idx===0 ? p1Name : (p2Name || 'Player 2');
     if (!p2IsAI && p2Uid) {
       recordGameResult({
         classId, gameId: "speed-connect-4",

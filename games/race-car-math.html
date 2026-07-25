@@ -312,7 +312,7 @@
   <div id="playersRow">
     <div class="panel p1" id="panel-p1">
       <div class="panel-top">
-        <div class="player-name"><span class="swatch"></span>Player 1</div>
+        <div class="player-name" id="p1NameDisplay"><span class="swatch"></span>Player 1</div>
         <div class="table-badge" id="p1TableLabel">-</div>
       </div>
       <div class="speedbar-wrap"><div class="speedbar" id="p1Speedbar"></div></div>
@@ -353,11 +353,11 @@
     <p class="sub">Each player picks a times table to practice. Answer fast to speed up — miss too many and you'll slow to a crawl. First to 5 laps wins!</p>
     <div class="pickers">
       <div class="picker p1">
-        <h3>🔴 Player 1</h3>
+        <h3 id="p1-heading">🔴 Player 1</h3>
         <div class="readout" id="p1Readout">Loading your profile…</div>
       </div>
       <div class="picker p2">
-        <h3>🔵 Player 2</h3>
+        <h3 id="p2-heading">🔵 Player 2</h3>
         <div class="mode-toggle">
           <button type="button" class="mode-btn active" id="p2ModeHuman">👤 Human</button>
           <button type="button" class="mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
@@ -439,6 +439,8 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
 
   // ---------- PLAYER SETUP (auto from login, no manual table picking) ----------
   state.p1.level = p1Level;
+  document.getElementById('p1-heading').textContent = `🔴 ${p1Name}`;
+  document.getElementById('p1NameDisplay').innerHTML = `<span class="swatch"></span>${p1Name}`;
   document.getElementById('p1Readout').textContent = `${p1Name} — ${levelInfo(p1Level).label}`;
   document.getElementById('p1TableLabel').textContent = levelInfo(p1Level).label;
 
@@ -462,6 +464,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
       state.p2.isAI = false;
       state.p2.aiProfile = null;
       state.p2.name = profile.name;
+      document.getElementById('p2-heading').textContent = `🔵 ${profile.name}`;
       document.getElementById('p2TableLabel').textContent = levelInfo(state.p2.level).label;
       document.getElementById('p2LoginBox').innerHTML = `<div class="readout">${profile.name} — ${levelInfo(state.p2.level).label} ✔️</div>`;
       checkReady();
@@ -481,6 +484,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
       state.p2.isAI = false;
       state.p2.aiProfile = null;
       state.p2.name = null;
+      document.getElementById('p2-heading').textContent = '🔵 Player 2';
       document.getElementById('p2TableLabel').textContent = '-';
       document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('sel'));
       document.getElementById('p2AIReadout').textContent = '';
@@ -499,6 +503,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
       state.p2.isAI = true;
       state.p2.aiProfile = applyAISettings(bot.profile, "race-car-math", await aiSettingsPromise);
       state.p2.name = bot.name;
+      document.getElementById('p2-heading').textContent = `🔵 ${bot.name}`;
       document.getElementById('p2TableLabel').textContent = levelInfo(bot.level).label;
       document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
       checkReady();
@@ -536,11 +541,10 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     if(!(state.p1.level && state.p2.level)) return;
     const p2NameEl = document.querySelector('#panel-p2 .player-name');
     const p2Keypad = document.getElementById('p2Keypad');
+    p2NameEl.innerHTML = `<span class="swatch"></span>${state.p2.name || 'Player 2'}`;
     if(state.p2.isAI){
-      p2NameEl.innerHTML = `<span class="swatch"></span>${state.p2.name}`;
       p2Keypad.classList.add('hidden');
     } else {
-      p2NameEl.innerHTML = `<span class="swatch"></span>Player 2`;
       p2Keypad.classList.remove('hidden');
     }
     document.getElementById('setupOverlay').classList.add('hidden');
@@ -763,7 +767,7 @@ const p1Level = parseInt(sessionStorage.getItem("ttr_level") || "1", 10);
     state.raceOver = true;
     state.raceRunning = false;
     sfx.win();
-    const name = key === 'p1' ? 'Player 1' : (state.p2.isAI ? state.p2.name : 'Player 2');
+    const name = key === 'p1' ? p1Name : (state.p2.name || 'Player 2');
     if (!state.p2.isAI && state.p2.uid) {
       recordGameResult({
         classId, gameId: "race-car-math",

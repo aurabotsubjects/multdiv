@@ -252,11 +252,11 @@
 
   <div class="setup-wrap">
     <div class="setup-col p1">
-      <h2 class="setup-heading">🔵 Player 1</h2>
+      <h2 class="setup-heading" id="p1-heading">🔵 Player 1</h2>
       <div class="picked-label" id="p1-picked">Loading your profile…</div>
     </div>
     <div class="setup-col p2">
-      <h2 class="setup-heading">🔴 Player 2</h2>
+      <h2 class="setup-heading" id="p2-heading">🔴 Player 2</h2>
       <div class="p2-mode-toggle">
         <button type="button" class="p2-mode-btn active" id="p2ModeHuman">👤 Human</button>
         <button type="button" class="p2-mode-btn" id="p2ModeAI">🤖 No partner? Play a bot</button>
@@ -364,6 +364,7 @@ let p2IsAI = false;
 let p2AIProfile = null;
 let p2Name = null;
 
+document.getElementById('p1-heading').textContent = `🔵 ${p1Name}`;
 document.getElementById('p1-picked').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
   const sel = document.getElementById('p2NameSelect');
@@ -384,6 +385,7 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p2IsAI = false;
     p2AIProfile = null;
     p2Name = profile.name;
+    document.getElementById('p2-heading').textContent = `🔴 ${profile.name}`;
     document.getElementById('p2LoginBox').innerHTML =
       `<div class="picked-label">${profile.name} — ${levelInfo(p2Level).label} ✔️</div>`;
     window.__baseAttackCheckReady && window.__baseAttackCheckReady();
@@ -400,6 +402,7 @@ function setP2Mode(mode){
   document.getElementById('p2AIBox').style.display = mode === 'ai' ? '' : 'none';
   if (mode === 'human') {
     p2Level = null; p2IsAI = false; p2AIProfile = null; p2Name = null;
+    document.getElementById('p2-heading').textContent = '🔴 Player 2';
     document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
     document.getElementById('p2AIReadout').textContent = '';
     window.__baseAttackCheckReady && window.__baseAttackCheckReady();
@@ -416,6 +419,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     p2IsAI = true;
     p2AIProfile = applyAISettings(bot.profile, "base-attack", await aiSettingsPromise);
     p2Name = bot.name;
+    document.getElementById('p2-heading').textContent = `🔴 ${bot.name}`;
     document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
     window.__baseAttackCheckReady && window.__baseAttackCheckReady();
   });
@@ -709,8 +713,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     }
     const title = document.getElementById('go-title');
     const sub = document.getElementById('go-sub');
-    if(winnerSide==='p1'){ title.textContent='🏆 Player 1 Wins!'; sub.textContent='The Blue army smashed the Red base!'; }
-    else { title.textContent='🏆 Player 2 Wins!'; sub.textContent='The Red army smashed the Blue base!'; }
+    if(winnerSide==='p1'){ title.textContent=`🏆 ${p1Name} Wins!`; sub.textContent='The Blue army smashed the Red base!'; }
+    else { title.textContent=`🏆 ${p2Name} Wins!`; sub.textContent='The Red army smashed the Blue base!'; }
     document.getElementById('gameover').style.display='flex';
   }
 
