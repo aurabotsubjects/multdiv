@@ -269,7 +269,7 @@
 
     <div class="setup-panels">
       <div class="pick-panel p1">
-        <div class="pick-title">PLAYER 1</div>
+        <div class="pick-title" id="pick-title-p1">PLAYER 1</div>
         <div class="chosen-line" id="chosen-p1">Loading your profile…</div>
       </div>
       <div class="pick-panel p2">
@@ -398,6 +398,7 @@ let p2IsAI = false;
 let p2AIProfile = null;
 let p2Name = null;
 
+document.getElementById('pick-title-p1').textContent = p1Name;
 document.getElementById('chosen-p1').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
   const sel = document.getElementById('p2NameSelect');
@@ -716,7 +717,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   function spawnAttack(attacker){
     if(!gameActive) return;
     var target = otherPlayer(attacker);
-    createEquation(target, attacker.id, 'attack', generateQuestion(attacker.level));
+    createEquation(target, attacker.id, 'attack', generateQuestion(target.level));
   }
 
   function removeEquation(eq, popEffect){
