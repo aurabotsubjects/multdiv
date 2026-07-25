@@ -445,7 +445,6 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   const COINS_PER_CORRECT = 4;
   const STREAK_BONUS = 2;
   const STREAK_LEN = 3;
-  const MIN_GAP = 2.4;
   const TICK_MS = 100;
 
   let unitIdCounter = 1;
@@ -500,19 +499,22 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   buildShop(document.getElementById('p2-shop'),'p2');
 
   /* ---------------- EQUATIONS ---------------- */
+  function scheduleAIAttempt(P){
+    if(P.aiCancel){ P.aiCancel(); P.aiCancel = null; }
+    if(!P.isAI) return;
+    const side = P === P1 ? 'p1' : 'p2';
+    P.aiCancel = scheduleAIAnswer(P.aiProfile, { answer: P.eq.ans }, (isCorrect, value) => {
+      P.aiCancel = null;
+      if(!running) return;
+      P.answer = String(value);
+      handleKey(side, 'enter');
+    });
+  }
+
   function newEquation(P){
     const q = generateQuestion(P.level);
     P.eq = { a: q.a, b: q.b, symbol: q.symbol, ans: q.answer };
-    if(P.aiCancel){ P.aiCancel(); P.aiCancel = null; }
-    if(P.isAI){
-      const side = P === P1 ? 'p1' : 'p2';
-      P.aiCancel = scheduleAIAnswer(P.aiProfile, { answer: P.eq.ans }, (isCorrect, value) => {
-        P.aiCancel = null;
-        if(!running) return;
-        P.answer = String(value);
-        handleKey(side, 'enter');
-      });
-    }
+    scheduleAIAttempt(P);
   }
 
   function renderEquation(side){
@@ -551,6 +553,7 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
       } else {
         P.streak = 0;
         flashEquation(side,false);
+        scheduleAIAttempt(P); // if this was the AI, give it another go — otherwise a no-op
       }
       P.answer='';
       renderAnswer(side);
@@ -637,16 +640,6 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     return best?{unit:best,dist:bestDist}:null;
   }
 
-  function nearestAllyAhead(u, dir){
-    let bestDist = Infinity;
-    for(const o of units){
-      if(o===u || o.owner!==u.owner) continue;
-      const ahead = dir>0 ? (o.x - u.x) : (u.x - o.x);
-      if(ahead>0 && ahead<bestDist) bestDist=ahead;
-    }
-    return bestDist;
-  }
-
   function distToEnemyBase(u){
     return u.owner==='p1' ? (P2_BASE_X - u.x) : (u.x - P1_BASE_X);
   }
@@ -686,11 +679,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
             damageBase(u.owner, u.def.dmg);
           }
         } else {
-          const allyGap = nearestAllyAhead(u,dir);
-          if(allyGap > MIN_GAP){
-            u.x += dir*u.def.speed*dt;
-            u.x = Math.max(0, Math.min(100,u.x));
-          }
+          u.x += dir*u.def.speed*dt;
+          u.x = Math.max(0, Math.min(100,u.x));
           u.state='walk';
         }
       }
