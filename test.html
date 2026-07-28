@@ -84,8 +84,26 @@ function buildQuestions() {
       <input type="number" inputmode="numeric" id="input-${i}" autocomplete="off" />
     </div>
   `).join("");
+
+  // Enter moves straight to the next box in question order, so students can
+  // just type-Enter-type-Enter without ever touching the mouse. Enter on the
+  // last box submits the test.
+  questions.forEach((q, i) => {
+    document.getElementById(`input-${i}`).addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const next = document.getElementById(`input-${i + 1}`);
+      if (next) next.focus();
+      else { clearInterval(timerInterval); finishTest(); }
+    });
+  });
+
   document.getElementById("input-0").focus();
 }
+
+// Belt-and-braces: stop the browser's native form submission (which would
+// reload the page) if Enter is ever pressed somewhere this doesn't catch.
+testForm.addEventListener("submit", (e) => e.preventDefault());
 
 function startTimer() {
   timeLeft = 60;
