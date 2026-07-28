@@ -62,13 +62,26 @@ export async function saveTestResult(classId, { studentId, studentName, level, s
 }
 
 export function listenPendingNotifications(classId, callback) {
+  // NOTE: deliberately no orderBy() here. Combining it with the two where()
+  // equality filters below requires a Firestore composite index — if that
+  // index doesn't exist in the Firebase console, this query fails and
+  // (with no error handler) fails *silently*, so the teacher page just never
+  // shows any pending approvals even though the notification docs exist.
+  // Sorting client-side avoids needing that index at all.
   const q = query(
     collection(db, "notifications"),
     where("classId", "==", classId),
-    where("status", "==", "pending"),
-    orderBy("createdAt", "asc")
+    where("status", "==", "pending")
   );
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+  return onSnapshot(
+    q,
+    snap => {
+      const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      notifs.sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
+      callback(notifs);
+    },
+    err => console.error("listenPendingNotifications failed:", err)
+  );
 }
 
 export async function resolveNotification(notifId, { approve, studentId, currentLevel }) {
