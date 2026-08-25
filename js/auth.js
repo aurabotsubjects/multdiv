@@ -11,6 +11,7 @@
 // the separate `workerAuth`/`workerDb` so the person doing the creating
 // doesn't get signed out of their own session in the process.
 // ============================================================
+import { generatePassword } from "./passwords.js";
 import {
   auth, db, workerAuth, workerDb,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
@@ -21,7 +22,10 @@ export function slugify(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-function studentEmail(classCode, name, disambiguator = "") {
+// Exported so the teacher dashboard can show a student's internal login
+// email — that's what you search for in the Firebase console when resetting
+// a forgotten password.
+export function studentEmail(classCode, name, disambiguator = "") {
   return `${classCode.toLowerCase()}.${slugify(name)}${disambiguator}@students.ttrace.app`;
 }
 
@@ -126,13 +130,18 @@ export async function createClass({ teacherId, className, classCode }) {
   return ref.id;
 }
 
+// Creates one student. If no password is passed in, a unique random one is
+// generated (this is the normal path now — see js/passwords.js for why).
+// Returns { uid, name, email, password } so the caller can show the password
+// to the teacher ONCE. It is never written to Firestore.
 export async function createStudentAccount({ classId, classCode, name, password }) {
+  const finalPassword = password || generatePassword();
   let email = studentEmail(classCode, name);
   const roster = await getClassRoster(classId);
   if (roster.some(s => s.email === email)) {
     email = studentEmail(classCode, name, "-" + Math.floor(Math.random() * 900 + 100));
   }
-  const cred = await createUserWithEmailAndPassword(workerAuth, email, password);
+  const cred = await createUserWithEmailAndPassword(workerAuth, email, finalPassword);
   await setDoc(doc(db, "users", cred.user.uid), {
     role: "student", name, classId, level: 1, createdAt: serverTimestamp()
   });
@@ -142,5 +151,5 @@ export async function createStudentAccount({ classId, classCode, name, password 
   students.push({ uid: cred.user.uid, name, email });
   await setDoc(rosterRef, { ...(rosterSnap.exists() ? rosterSnap.data() : {}), students });
   await signOut(workerAuth);
-  return cred.user.uid;
+  return { uid: cred.user.uid, name, email, password: finalPassword };
 }

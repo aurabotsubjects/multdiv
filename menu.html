@@ -8,6 +8,8 @@
 <style>
   .game-card.disabled { opacity: 0.4; pointer-events: none; }
   .soon-tag { font-size: 0.65rem; color: var(--ink-soft); font-family: var(--font-body); }
+  .cap-tag { font-size: 0.62rem; color: var(--ink-soft); font-family: var(--font-body); margin-top: 2px; }
+  .cap-tag.used-up { color: var(--coral, #ff7a6b); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -42,6 +44,7 @@
 
     <div class="panel">
       <h2>🎮 Practice games</h2>
+      <p class="hint-text" id="capNote"></p>
       <div class="game-grid" style="margin-top:12px;" id="gameGrid"></div>
     </div>
   </div>
@@ -87,13 +90,36 @@ const games = [
   { emoji: "🔴", name: "Speed Connect 4", href: "games/speed-connect-4.html", ready: true },
 ];
 
-document.getElementById("gameGrid").innerHTML = games.map(g => `
-  <a class="game-card ${g.ready ? "" : "disabled"}" href="${g.ready ? g.href : "#"}">
-    <div class="emoji">${g.emoji}</div>
-    <div class="name">${g.name}</div>
-    ${g.ready ? "" : '<div class="soon-tag">Coming soon</div>'}
-  </a>
-`).join("");
+// The gameId used by the leaderboard is just the file name, e.g.
+// "games/math-bubble-pop.html" -> "math-bubble-pop".
+const gameIdOf = (g) => g.href.split("/").pop().replace(".html", "");
+
+function paintGames(counts, limit) {
+  document.getElementById("gameGrid").innerHTML = games.map(g => {
+    const played = counts[gameIdOf(g)] || 0;
+    const left = Math.max(0, limit - played);
+    const capTag = !g.ready ? '<div class="soon-tag">Coming soon</div>'
+      : left === 0
+        ? `<div class="cap-tag used-up">Practice only today</div>`
+        : `<div class="cap-tag">${left} of ${limit} ranked games left today</div>`;
+    return `
+      <a class="game-card ${g.ready ? "" : "disabled"}" href="${g.ready ? g.href : "#"}">
+        <div class="emoji">${g.emoji}</div>
+        <div class="name">${g.name}</div>
+        ${capTag}
+      </a>`;
+  }).join("");
+}
+
+// Paint immediately with no counts so the menu never sits blank, then fill in
+// today's real numbers once Firestore answers.
+import("./js/play-limits.js").then(async ({ getTodaysCounts, DAILY_GAME_LIMIT }) => {
+  document.getElementById("capNote").textContent =
+    `Only your first ${DAILY_GAME_LIMIT} matches of each game each day count towards the leaderboard — after that you can keep playing, it just won't add wins.`;
+  paintGames({}, DAILY_GAME_LIMIT);
+  const counts = await getTodaysCounts(classId, uid);
+  paintGames(counts, DAILY_GAME_LIMIT);
+});
 </script>
 </body>
 </html>

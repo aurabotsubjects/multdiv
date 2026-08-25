@@ -13,6 +13,15 @@
   .row-inline { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
   .row-inline > div { flex: 1; min-width: 140px; }
   .mini-btn { padding: 4px 10px; font-size: 0.75rem; border-radius: 8px; background: var(--line); color: var(--track); font-family: var(--font-body); font-weight: 600; }
+  .pw-card { margin-top: 16px; padding: 14px; border: 2px dashed var(--gold); border-radius: 12px; }
+  .pw-card h3 { margin: 0 0 6px; font-family: var(--font-display); }
+  .pw-code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 700; letter-spacing: 0.5px; }
+  .pw-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  #bulkNames { width: 100%; min-height: 120px; font-family: var(--font-body); }
+  .reset-steps { margin: 10px 0 0; padding-left: 20px; line-height: 1.6; }
+  .reset-steps li { margin-bottom: 4px; }
+  .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+  .modal-box { max-width: 560px; width: 100%; max-height: 85vh; overflow: auto; }
 </style>
 </head>
 <body>
@@ -69,13 +78,35 @@
       <div class="panel" id="rosterCard" style="display:none;">
         <h2>Roster</h2>
         <p class="hint-text">Class code: <strong id="classCodeDisplay"></strong> — students enter this to log in.</p>
-        <div class="row-inline" style="margin:14px 0;">
+        <div class="row-inline" style="margin:14px 0 8px;">
           <div><div class="label">Student name</div><input type="text" id="newStudentName" /></div>
-          <div><div class="label">Password</div><input type="text" id="newStudentPassword" placeholder="min. 6 characters" /></div>
           <button class="btn" id="addStudentBtn">Add student</button>
         </div>
-        <div id="studentError" class="error-text" style="display:none; margin-bottom:8px;"></div>
-        <table>
+        <p class="hint-text">Every student gets their own randomly generated password. You'll see it once — right here — so print the slips or write it down before you leave this page.</p>
+
+        <details style="margin-top:12px;">
+          <summary style="cursor:pointer; font-weight:600;">Add a whole class at once</summary>
+          <div class="label" style="margin-top:10px;">One name per line</div>
+          <textarea id="bulkNames" placeholder="Ava Ngata&#10;Ben Wiremu&#10;Charlie Tane"></textarea>
+          <button class="btn" id="bulkAddBtn" style="margin-top:8px;">Create these accounts</button>
+        </details>
+
+        <div id="studentError" class="error-text" style="display:none; margin-top:10px;"></div>
+
+        <div class="pw-card" id="newPasswordsCard" style="display:none;">
+          <h3>🔐 New passwords — shown once only</h3>
+          <p class="hint-text">These are not saved anywhere. Print the slips and hand each student their own, then click Done.</p>
+          <table style="margin-top:10px;">
+            <thead><tr><th>Name</th><th>Password</th></tr></thead>
+            <tbody id="newPasswordsBody"></tbody>
+          </table>
+          <div class="pw-actions">
+            <button class="btn gold" id="printSlipsBtn">🖨️ Print slips</button>
+            <button class="btn ghost" id="dismissPasswordsBtn">Done — I've saved these</button>
+          </div>
+        </div>
+
+        <table style="margin-top:16px;">
           <thead><tr><th>Name</th><th>Level</th><th></th></tr></thead>
           <tbody id="rosterBody"></tbody>
         </table>
@@ -86,7 +117,8 @@
 
 <script type="module">
 import { auth, onAuthStateChanged } from "./js/firebase-init.js";
-import { teacherLogin, getMyProfile, createClass, createStudentAccount, logout } from "./js/auth.js";
+import { teacherLogin, getMyProfile, createClass, createStudentAccount, getClassRoster, logout } from "./js/auth.js";
+import { generatePassword } from "./js/passwords.js";
 import { listClassesForTeacher, listStudents, setStudentLevel, listenPendingNotifications, resolveNotification } from "./js/db.js";
 import { levelInfo, nextLevel } from "./js/levels.js";
 
@@ -188,6 +220,11 @@ classSelect.addEventListener("change", async () => {
 
 async function loadRoster() {
   const students = await listStudents(currentClassId);
+  // The roster doc is where each student's internal login email lives — we
+  // need it for the "forgot my password" instructions below.
+  const rosterEntries = await getClassRoster(currentClassId);
+  const emailByUid = Object.fromEntries(rosterEntries.map(e => [e.uid, e.email]));
+
   rosterBody.innerHTML = students.length
     ? students.map(s => `
         <tr>
@@ -196,6 +233,7 @@ async function loadRoster() {
           <td>
             <button class="mini-btn" data-id="${s.id}" data-delta="-1">-1 level</button>
             <button class="mini-btn" data-id="${s.id}" data-delta="1">+1 level</button>
+            <button class="mini-btn" data-reset="${s.id}">🔑 Password</button>
           </td>
         </tr>`).join("")
     : `<tr><td colspan="3">No students yet — add one above.</td></tr>`;
@@ -209,28 +247,157 @@ async function loadRoster() {
       await loadRoster();
     });
   });
+
+  rosterBody.querySelectorAll("button[data-reset]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const student = students.find(s => s.id === btn.dataset.reset);
+      showResetHelp(student.name, emailByUid[student.id] || "(email not found on the roster)");
+    });
+  });
+}
+
+// ---------- "Forgot my password" helper ----------
+// Passwords are stored only by Firebase Auth, hashed — nothing in this app
+// can read or change another user's password. Resetting one is a 20-second
+// job in the Firebase console, and this modal spells out exactly where to
+// click and hands you a fresh password to paste in.
+function showResetHelp(name, email) {
+  const suggested = generatePassword();
+  const back = document.createElement("div");
+  back.className = "modal-back";
+  back.innerHTML = `
+    <div class="panel modal-box">
+      <h2>🔑 Reset ${name}'s password</h2>
+      <p class="hint-text">Nobody — not even you — can read an existing password, so a forgotten one has to be replaced with a new one.</p>
+      <p style="margin-top:12px;"><b>Their login email:</b><br><span class="pw-code">${email}</span></p>
+      <p style="margin-top:10px;"><b>New password to use:</b><br><span class="pw-code" id="suggestedPw">${suggested}</span></p>
+      <ol class="reset-steps">
+        <li>Open <a href="https://console.firebase.google.com/project/playermultdiv/authentication/users" target="_blank" rel="noopener" style="text-decoration:underline;">Firebase console → Authentication → Users</a>.</li>
+        <li>Search for the login email above.</li>
+        <li>Click the ⋮ menu at the end of that row → <b>Reset password</b> is email-based and won't work here, so choose <b>Edit user</b> instead.</li>
+        <li>Type the new password into the Password field and click <b>Save</b>.</li>
+        <li>Write it on a slip and hand it to ${name} — don't read it out to the class.</li>
+      </ol>
+      <div class="pw-actions">
+        <button class="btn" id="copyPwBtn">Copy password</button>
+        <button class="btn ghost" id="closeResetBtn">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(back);
+  back.addEventListener("click", (e) => { if (e.target === back) back.remove(); });
+  back.querySelector("#closeResetBtn").addEventListener("click", () => back.remove());
+  back.querySelector("#copyPwBtn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(suggested);
+      back.querySelector("#copyPwBtn").textContent = "Copied ✓";
+    } catch (err) {
+      back.querySelector("#copyPwBtn").textContent = "Copy failed — select it by hand";
+    }
+  });
+}
+
+// ---------- Creating students ----------
+// Passwords are generated in js/passwords.js, never typed by the teacher and
+// never stored. Whatever gets created in one go is collected in `issued` and
+// shown once in the card below, ready to print.
+let issued = [];
+
+function renderIssued() {
+  const card = document.getElementById("newPasswordsCard");
+  if (!issued.length) { card.style.display = "none"; return; }
+  document.getElementById("newPasswordsBody").innerHTML = issued
+    .map(s => `<tr><td>${s.name}</td><td class="pw-code">${s.password}</td></tr>`).join("");
+  card.style.display = "block";
+  card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+document.getElementById("dismissPasswordsBtn").addEventListener("click", () => {
+  issued = [];
+  renderIssued();
+});
+
+document.getElementById("printSlipsBtn").addEventListener("click", () => {
+  const cls = classes.find(c => c.id === currentClassId);
+  const slips = issued.map(s => `
+    <div class="slip">
+      <div class="slip-title">🏁 Times Tables Race</div>
+      <div class="slip-line"><span>Class code</span><b>${cls?.classCode || ""}</b></div>
+      <div class="slip-line"><span>Name</span><b>${s.name}</b></div>
+      <div class="slip-line"><span>Password</span><b class="mono">${s.password}</b></div>
+      <div class="slip-note">Keep this to yourself — don't share your password.</div>
+    </div>`).join("");
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><title>Login slips</title><style>
+    body { font-family: system-ui, sans-serif; margin: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .slip { border: 1px dashed #666; border-radius: 8px; padding: 12px; break-inside: avoid; }
+    .slip-title { font-weight: 800; margin-bottom: 8px; }
+    .slip-line { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
+    .slip-line span { color: #666; }
+    .mono { font-family: ui-monospace, Menlo, monospace; }
+    .slip-note { margin-top: 8px; font-size: 11px; color: #666; }
+  </style></head><body><div class="grid">${slips}</div>
+  <script>window.onload = function(){ window.print(); }<\/script></body></html>`);
+  win.document.close();
+});
+
+async function addOneStudent(name) {
+  const cls = classes.find(c => c.id === currentClassId);
+  const created = await createStudentAccount({ classId: currentClassId, classCode: cls.classCode, name });
+  issued.push(created);
 }
 
 document.getElementById("addStudentBtn").addEventListener("click", async () => {
-  const name = document.getElementById("newStudentName").value.trim();
-  const password = document.getElementById("newStudentPassword").value;
+  const nameInput = document.getElementById("newStudentName");
+  const name = nameInput.value.trim();
   const errEl = document.getElementById("studentError");
   errEl.style.display = "none";
-  if (!name || password.length < 6 || !currentClassId) {
-    errEl.textContent = "Enter a name and a password of at least 6 characters.";
+  if (!name || !currentClassId) {
+    errEl.textContent = "Enter the student's name first.";
     errEl.style.display = "block";
     return;
   }
-  const cls = classes.find(c => c.id === currentClassId);
   try {
-    await createStudentAccount({ classId: currentClassId, classCode: cls.classCode, name, password });
-    document.getElementById("newStudentName").value = "";
-    document.getElementById("newStudentPassword").value = "";
+    await addOneStudent(name);
+    nameInput.value = "";
+    renderIssued();
     await loadRoster();
   } catch (err) {
     errEl.textContent = err.message || "Couldn't create that student.";
     errEl.style.display = "block";
   }
+});
+
+document.getElementById("bulkAddBtn").addEventListener("click", async () => {
+  const box = document.getElementById("bulkNames");
+  const errEl = document.getElementById("studentError");
+  errEl.style.display = "none";
+  const names = box.value.split("\n").map(n => n.trim()).filter(Boolean);
+  if (!names.length || !currentClassId) {
+    errEl.textContent = "Put at least one name in the box (one per line).";
+    errEl.style.display = "block";
+    return;
+  }
+  const btn = document.getElementById("bulkAddBtn");
+  btn.disabled = true;
+  btn.textContent = "Creating…";
+  const failed = [];
+  // Sequential on purpose: each creation borrows the shared worker auth
+  // session, so they must not overlap.
+  for (const name of names) {
+    try { await addOneStudent(name); }
+    catch (err) { failed.push(`${name} (${err.message || "failed"})`); }
+  }
+  btn.disabled = false;
+  btn.textContent = "Create these accounts";
+  box.value = "";
+  if (failed.length) {
+    errEl.textContent = `Couldn't create: ${failed.join(", ")}`;
+    errEl.style.display = "block";
+  }
+  renderIssued();
+  await loadRoster();
 });
 
 function renderNotifications(notifs) {

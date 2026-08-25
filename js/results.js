@@ -10,6 +10,8 @@
 // Collection shape:
 //   gameResults/{id} {
 //     classId, gameId, gameName, weekId ('YYYY-MM-DD' of that week's Monday),
+//     dayId ('YYYY-MM-DD' of the day it was played — used by the daily
+//            per-game cap in js/play-limits.js),
 //     player1: { uid, name }, player2: { uid, name },
 //     winnerUid, winnerName, createdAt
 //   }
@@ -17,6 +19,7 @@
 import {
   db, collection, addDoc, getDocs, query, where, serverTimestamp
 } from "./firebase-init.js";
+import { currentDayId, isGameCapped, DAILY_GAME_LIMIT } from "./play-limits.js";
 
 export const GAME_NAMES = {
   "multiple-race": "🏁 Multiple Race",
@@ -59,20 +62,37 @@ export function currentWeekLabel(date = new Date()) {
 
 // ---------- Record a completed match ----------
 // Call this only when BOTH players are real students (never vs-AI matches).
+//
+// The daily cap is enforced here rather than in each game, so every game gets
+// it for free. If the winner has already had DAILY_GAME_LIMIT counted matches
+// of this game today, the match is simply not recorded — they still played it,
+// it just doesn't add to the leaderboard.
+//
+// Returns { recorded: true } or { recorded: false, reason: "daily-limit" | "error" }
+// so a game can show a "practice only" note if it wants to. Games that ignore
+// the return value keep working exactly as before.
 export async function recordGameResult({ classId, gameId, player1, player2, winnerUid, winnerName }) {
-  if (!classId || !gameId || !player1?.uid || !player2?.uid || !winnerUid) return;
+  if (!classId || !gameId || !player1?.uid || !player2?.uid || !winnerUid) {
+    return { recorded: false, reason: "incomplete" };
+  }
   try {
+    if (await isGameCapped(classId, winnerUid, gameId)) {
+      return { recorded: false, reason: "daily-limit", limit: DAILY_GAME_LIMIT };
+    }
     await addDoc(collection(db, "gameResults"), {
       classId, gameId, gameName: GAME_NAMES[gameId] || gameId,
       weekId: currentWeekId(),
+      dayId: currentDayId(),
       player1: { uid: player1.uid, name: player1.name || "Player 1" },
       player2: { uid: player2.uid, name: player2.name || "Player 2" },
       winnerUid, winnerName: winnerName || "Player",
       createdAt: serverTimestamp()
     });
+    return { recorded: true };
   } catch (err) {
     // Never let a leaderboard write break the game itself.
     console.error("Couldn't save game result:", err);
+    return { recorded: false, reason: "error" };
   }
 }
 

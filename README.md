@@ -20,6 +20,52 @@ create students, students log in and practise with a friend, then take a
   logs in (their own name + password) right there on the game screen, so the
   game always uses *each* player's own level, not a shared one.
 
+## Student passwords (updated)
+
+Passwords are no longer typed in by the teacher. When you add a student, the
+app generates a unique random password for them (`js/passwords.js`) — two
+short words plus two digits, e.g. `bravekiwi38`: easy for a child to type,
+impossible for a classmate to guess.
+
+- **Shown once.** New passwords appear in a dashed gold card on the roster,
+  with a **Print slips** button that lays them out two-up for cutting up and
+  handing out. They are *not* saved to Firestore or anywhere else — only
+  Firebase Auth holds them, hashed. Print or write them down before leaving
+  the page.
+- **Whole class at once.** The "Add a whole class at once" box takes one name
+  per line and creates every account in one go, then shows all the passwords
+  together ready to print.
+- **Forgotten passwords.** No part of this app can read or change someone
+  else's password, so a lost one has to be replaced. The 🔑 button on each
+  roster row opens step-by-step instructions, the student's internal login
+  email, and a freshly generated password to paste into
+  Firebase console → Authentication → Users → Edit user → Save.
+  (Doing it in-app would need a Cloud Function, which requires the Blaze
+  billing plan.)
+
+Tell students their password is theirs alone. Because each one is different
+and unguessable, someone signing in as a classmate now has to have been
+handed that classmate's slip.
+
+## Daily limit on leaderboard matches
+
+To stop a single game being farmed for easy wins, only the first
+**2 matches of the same game per student per day** count towards the weekly
+leaderboard. Beyond that the game still opens and plays normally — the result
+just isn't recorded.
+
+- The number lives in `DAILY_GAME_LIMIT` in `js/play-limits.js`. Change that
+  one constant to loosen or tighten it.
+- The rule is enforced inside `recordGameResult()` in `js/results.js`, so
+  every game gets it without any per-game changes.
+- The count covers every match a student took part in that day, win or lose,
+  so playing "for" a friend doesn't get around it.
+- The game menu shows each card's remaining ranked games for today, or
+  "Practice only today" once they're used up.
+- Each `gameResults` document now carries a `dayId` (`YYYY-MM-DD`) alongside
+  `weekId`. Results written before this change have no `dayId` and simply
+  don't count towards the daily total.
+
 ## How the accounts work
 
 1. **Teachers request their own account** at `teacher-signup.html` — name,
