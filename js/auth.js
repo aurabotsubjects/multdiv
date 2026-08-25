@@ -14,7 +14,7 @@
 import { generatePassword } from "./passwords.js";
 import {
   auth, db, workerAuth, workerDb,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updatePassword,
   collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp
 } from "./firebase-init.js";
 
@@ -85,11 +85,29 @@ export async function getClassRoster(classId) {
 }
 
 // ---------- Student login (Player 1 — primary session) ----------
+// A "retired" profile is the leftover of a password reset: the teacher has
+// issued this student a brand-new login, so the old one must stop working
+// even though Firebase Auth still recognises the old password.
 export async function studentLogin(email, password) {
   const cred = await signInWithEmailAndPassword(auth, email, password);
   const snap = await getDoc(doc(db, "users", cred.user.uid));
   if (!snap.exists()) throw new Error("No profile found for this account.");
+  if (snap.data().retired) {
+    await signOut(auth);
+    throw new Error("account-reset");
+  }
   return { uid: cred.user.uid, ...snap.data() };
+}
+
+// ---------- Setting your own password ----------
+// Called on the login screen the first time a student signs in with a
+// teacher-issued code, and again after every reset. Firebase lets a signed-in
+// user change their OWN password with no extra permissions — that's the whole
+// trick that makes this work without a paid backend.
+export async function setMyPassword(newPassword) {
+  if (!auth.currentUser) throw new Error("You're not signed in.");
+  await updatePassword(auth.currentUser, newPassword);
+  await setDoc(doc(db, "users", auth.currentUser.uid), { mustChangePassword: false }, { merge: true });
 }
 
 // ---------- Student login (Player 2 — worker session, alongside Player 1) ----------
@@ -97,7 +115,19 @@ export async function studentLoginSecondPlayer(email, password) {
   const cred = await signInWithEmailAndPassword(workerAuth, email, password);
   const snap = await getDoc(doc(workerDb, "users", cred.user.uid));
   if (!snap.exists()) throw new Error("No profile found for this account.");
-  return { uid: cred.user.uid, ...snap.data() };
+  const profile = snap.data();
+  if (profile.retired) {
+    await signOut(workerAuth);
+    throw new Error("account-reset");
+  }
+  // Player 2 can't choose a new password from inside a game, so send them to
+  // the main login screen to do it rather than letting them play on a code
+  // that everyone standing nearby just watched the teacher hand over.
+  if (profile.mustChangePassword) {
+    await signOut(workerAuth);
+    throw new Error("must-change-password");
+  }
+  return { uid: cred.user.uid, ...profile };
 }
 
 // ---------- Teacher self-signup (creates a real account immediately, but
@@ -143,7 +173,12 @@ export async function createStudentAccount({ classId, classCode, name, password 
   }
   const cred = await createUserWithEmailAndPassword(workerAuth, email, finalPassword);
   await setDoc(doc(db, "users", cred.user.uid), {
-    role: "student", name, classId, level: 1, createdAt: serverTimestamp()
+    role: "student", name, classId, level: 1,
+    // The teacher-issued password is a one-time code: the student is made to
+    // pick their own the first time they log in, so even a slip left on a
+    // desk stops being useful the moment they've signed in once.
+    mustChangePassword: true,
+    createdAt: serverTimestamp()
   });
   const rosterRef = doc(db, "classRosters", classId);
   const rosterSnap = await getDoc(rosterRef);
@@ -152,4 +187,75 @@ export async function createStudentAccount({ classId, classCode, name, password 
   await setDoc(rosterRef, { ...(rosterSnap.exists() ? rosterSnap.data() : {}), students });
   await signOut(workerAuth);
   return { uid: cred.user.uid, name, email, password: finalPassword };
+}
+
+// ---------- Resetting a forgotten password ----------
+// Firebase gives a browser exactly three ways to change a password: know the
+// current one, click an emailed link, or use the Admin SDK on a server. A
+// teacher whose student has forgotten their password has none of those (the
+// student "emails" are made up, so the console's reset email goes nowhere).
+//
+// So instead of changing the old login, we retire it and issue a fresh one:
+// a new Auth account with a new invisible email and a new one-time code, with
+// the student's name and level carried across, and `mustChangePassword` set
+// so they immediately choose their own password. The old account is marked
+// `retired` and studentLogin() refuses it, so the old password is dead even
+// though Firebase still technically recognises it.
+//
+// Returns { uid, name, email, password } — the code to hand to the student.
+export async function resetStudentPassword({ classId, classCode, student }) {
+  const rosterRef = doc(db, "classRosters", classId);
+  const rosterSnap = await getDoc(rosterRef);
+  const rosterData = rosterSnap.exists() ? rosterSnap.data() : { students: [] };
+  const students = rosterData.students || [];
+  const retiredEmails = rosterData.retiredEmails || [];
+
+  // Emails of retired accounts stay claimed inside Firebase Auth forever, so
+  // keep a list and never reuse one.
+  const taken = new Set([...students.map(s => s.email), ...retiredEmails]);
+  const password = generatePassword();
+
+  let cred = null, email = null;
+  for (let attempt = 0; attempt < 6 && !cred; attempt++) {
+    const candidate = studentEmail(classCode, student.name, "-r" + Math.floor(Math.random() * 900 + 100));
+    if (taken.has(candidate)) continue;
+    try {
+      cred = await createUserWithEmailAndPassword(workerAuth, candidate, password);
+      email = candidate;
+    } catch (err) {
+      if (err.code !== "auth/email-already-in-use") throw err;
+      taken.add(candidate); // collided with an older retired account — try again
+    }
+  }
+  if (!cred) throw new Error("Couldn't create a fresh login for that student — try again.");
+
+  const oldSnap = await getDoc(doc(db, "users", student.uid));
+  const old = oldSnap.exists() ? oldSnap.data() : {};
+
+  await setDoc(doc(db, "users", cred.user.uid), {
+    role: "student", name: student.name, classId,
+    level: old.level ?? 1,          // keep the level they'd worked up to
+    mustChangePassword: true,
+    previousUid: student.uid,
+    createdAt: serverTimestamp()
+  });
+  await setDoc(doc(db, "users", student.uid), {
+    retired: true, replacedBy: cred.user.uid
+  }, { merge: true });
+
+  const idx = students.findIndex(s => s.uid === student.uid);
+  const entry = { uid: cred.user.uid, name: student.name, email };
+  const nextStudents = idx >= 0
+    ? students.map((s, i) => (i === idx ? entry : s))
+    : [...students, entry];
+  const oldEmail = idx >= 0 ? students[idx].email : null;
+
+  await setDoc(rosterRef, {
+    ...rosterData,
+    students: nextStudents,
+    retiredEmails: oldEmail ? [...retiredEmails, oldEmail] : retiredEmails
+  });
+
+  await signOut(workerAuth);
+  return { uid: cred.user.uid, name: student.name, email, password };
 }

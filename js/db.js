@@ -39,7 +39,12 @@ export async function listClassesForTeacher(teacherId) {
 export async function listStudents(classId) {
   const q = query(collection(db, "users"), where("classId", "==", classId), where("role", "==", "student"));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    // Skip the leftovers of password resets — the student's current account is
+    // the replacement, and showing both would duplicate them on the roster.
+    .filter(s => !s.retired)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function setStudentLevel(studentId, level) {

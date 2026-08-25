@@ -82,7 +82,7 @@
           <div><div class="label">Student name</div><input type="text" id="newStudentName" /></div>
           <button class="btn" id="addStudentBtn">Add student</button>
         </div>
-        <p class="hint-text">Every student gets their own randomly generated password. You'll see it once — right here — so print the slips or write it down before you leave this page.</p>
+        <p class="hint-text">Every student gets their own one-time code. They type it the first time they log in and are then asked to choose their own private password. You'll see the code once — right here — so print the slips before you leave this page.</p>
 
         <details style="margin-top:12px;">
           <summary style="cursor:pointer; font-weight:600;">Add a whole class at once</summary>
@@ -94,10 +94,10 @@
         <div id="studentError" class="error-text" style="display:none; margin-top:10px;"></div>
 
         <div class="pw-card" id="newPasswordsCard" style="display:none;">
-          <h3>🔐 New passwords — shown once only</h3>
-          <p class="hint-text">These are not saved anywhere. Print the slips and hand each student their own, then click Done.</p>
+          <h3>🔐 One-time codes — shown once only</h3>
+          <p class="hint-text">Not saved anywhere. Print the slips and hand each student their own, then click Done. Each student chooses their own password the first time they log in.</p>
           <table style="margin-top:10px;">
-            <thead><tr><th>Name</th><th>Password</th></tr></thead>
+            <thead><tr><th>Name</th><th>First-login code</th></tr></thead>
             <tbody id="newPasswordsBody"></tbody>
           </table>
           <div class="pw-actions">
@@ -117,8 +117,7 @@
 
 <script type="module">
 import { auth, onAuthStateChanged } from "./js/firebase-init.js";
-import { teacherLogin, getMyProfile, createClass, createStudentAccount, getClassRoster, logout } from "./js/auth.js";
-import { generatePassword } from "./js/passwords.js";
+import { teacherLogin, getMyProfile, createClass, createStudentAccount, getClassRoster, resetStudentPassword, logout } from "./js/auth.js";
 import { listClassesForTeacher, listStudents, setStudentLevel, listenPendingNotifications, resolveNotification } from "./js/db.js";
 import { levelInfo, nextLevel } from "./js/levels.js";
 
@@ -233,7 +232,7 @@ async function loadRoster() {
           <td>
             <button class="mini-btn" data-id="${s.id}" data-delta="-1">-1 level</button>
             <button class="mini-btn" data-id="${s.id}" data-delta="1">+1 level</button>
-            <button class="mini-btn" data-reset="${s.id}">🔑 Password</button>
+            <button class="mini-btn" data-reset="${s.id}">🔑 Reset password</button>
           </td>
         </tr>`).join("")
     : `<tr><td colspan="3">No students yet — add one above.</td></tr>`;
@@ -251,47 +250,75 @@ async function loadRoster() {
   rosterBody.querySelectorAll("button[data-reset]").forEach(btn => {
     btn.addEventListener("click", () => {
       const student = students.find(s => s.id === btn.dataset.reset);
-      showResetHelp(student.name, emailByUid[student.id] || "(email not found on the roster)");
+      showResetDialog({ uid: student.id, name: student.name, level: student.level });
     });
   });
 }
 
-// ---------- "Forgot my password" helper ----------
-// Passwords are stored only by Firebase Auth, hashed — nothing in this app
-// can read or change another user's password. Resetting one is a 20-second
-// job in the Firebase console, and this modal spells out exactly where to
-// click and hands you a fresh password to paste in.
-function showResetHelp(name, email) {
-  const suggested = generatePassword();
+// ---------- Resetting a forgotten password ----------
+// One click. The student's old login is retired and a fresh one-time code is
+// issued in its place, keeping their name and level. They type that code once
+// and are then made to choose their own password, so the code being seen by
+// half the class doesn't matter after they've logged in.
+function showResetDialog(student) {
+  const cls = classes.find(c => c.id === currentClassId);
   const back = document.createElement("div");
   back.className = "modal-back";
   back.innerHTML = `
-    <div class="panel modal-box">
-      <h2>🔑 Reset ${name}'s password</h2>
-      <p class="hint-text">Nobody — not even you — can read an existing password, so a forgotten one has to be replaced with a new one.</p>
-      <p style="margin-top:12px;"><b>Their login email:</b><br><span class="pw-code">${email}</span></p>
-      <p style="margin-top:10px;"><b>New password to use:</b><br><span class="pw-code" id="suggestedPw">${suggested}</span></p>
-      <ol class="reset-steps">
-        <li>Open <a href="https://console.firebase.google.com/project/playermultdiv/authentication/users" target="_blank" rel="noopener" style="text-decoration:underline;">Firebase console → Authentication → Users</a>.</li>
-        <li>Search for the login email above.</li>
-        <li>Click the ⋮ menu at the end of that row → <b>Reset password</b> is email-based and won't work here, so choose <b>Edit user</b> instead.</li>
-        <li>Type the new password into the Password field and click <b>Save</b>.</li>
-        <li>Write it on a slip and hand it to ${name} — don't read it out to the class.</li>
-      </ol>
+    <div class="panel modal-box" id="resetBox">
+      <h2>🔑 Reset ${student.name}'s password</h2>
+      <p>Nobody can read an existing password — not you, not me, not Firebase — so a forgotten one gets replaced with a fresh one-time code.</p>
+      <ul class="reset-steps">
+        <li>${student.name} keeps their name, class and level.</li>
+        <li>Their old password stops working straight away.</li>
+        <li>They type the new code once, then choose their own private password.</li>
+      </ul>
       <div class="pw-actions">
-        <button class="btn" id="copyPwBtn">Copy password</button>
-        <button class="btn ghost" id="closeResetBtn">Close</button>
+        <button class="btn gold" id="doResetBtn">Reset it</button>
+        <button class="btn ghost" id="cancelResetBtn">Cancel</button>
       </div>
     </div>`;
   document.body.appendChild(back);
-  back.addEventListener("click", (e) => { if (e.target === back) back.remove(); });
-  back.querySelector("#closeResetBtn").addEventListener("click", () => back.remove());
-  back.querySelector("#copyPwBtn").addEventListener("click", async () => {
+  const close = () => back.remove();
+  back.addEventListener("click", (e) => { if (e.target === back) close(); });
+  back.querySelector("#cancelResetBtn").addEventListener("click", close);
+
+  back.querySelector("#doResetBtn").addEventListener("click", async () => {
+    const btn = back.querySelector("#doResetBtn");
+    btn.disabled = true;
+    btn.textContent = "Resetting…";
     try {
-      await navigator.clipboard.writeText(suggested);
-      back.querySelector("#copyPwBtn").textContent = "Copied ✓";
+      const result = await resetStudentPassword({
+        classId: currentClassId, classCode: cls.classCode, student
+      });
+      back.querySelector("#resetBox").innerHTML = `
+        <h2>✅ Done — give ${result.name} this code</h2>
+        <p style="margin-top:12px; font-size:1.4rem;" class="pw-code">${result.password}</p>
+        <p class="hint-text" style="margin-top:10px;">Hand it over quietly — once they log in, the app asks them to choose their own password and this code stops working.</p>
+        <div class="pw-actions">
+          <button class="btn" id="copyResetPw">Copy code</button>
+          <button class="btn ghost" id="closeResetBtn">Close</button>
+        </div>`;
+      back.querySelector("#closeResetBtn").addEventListener("click", async () => {
+        close();
+        await loadRoster();
+      });
+      back.querySelector("#copyResetPw").addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(result.password);
+          back.querySelector("#copyResetPw").textContent = "Copied ✓";
+        } catch (err) {
+          back.querySelector("#copyResetPw").textContent = "Copy failed — read it off the screen";
+        }
+      });
     } catch (err) {
-      back.querySelector("#copyPwBtn").textContent = "Copy failed — select it by hand";
+      btn.disabled = false;
+      btn.textContent = "Try again";
+      const note = document.createElement("p");
+      note.className = "error-text";
+      note.textContent = err.message || "Couldn't reset that password.";
+      back.querySelector("#resetBox").appendChild(note);
+      console.error(err);
     }
   });
 }
@@ -323,8 +350,8 @@ document.getElementById("printSlipsBtn").addEventListener("click", () => {
       <div class="slip-title">🏁 Times Tables Race</div>
       <div class="slip-line"><span>Class code</span><b>${cls?.classCode || ""}</b></div>
       <div class="slip-line"><span>Name</span><b>${s.name}</b></div>
-      <div class="slip-line"><span>Password</span><b class="mono">${s.password}</b></div>
-      <div class="slip-note">Keep this to yourself — don't share your password.</div>
+      <div class="slip-line"><span>First-login code</span><b class="mono">${s.password}</b></div>
+      <div class="slip-note">Log in with this code, then choose your own password. Keep it to yourself.</div>
     </div>`).join("");
   const win = window.open("", "_blank");
   if (!win) return;

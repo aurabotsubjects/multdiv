@@ -60,7 +60,12 @@ export function renderPlayer2Login(container, classId, excludeUid) {
               const profile = await studentLoginSecondPlayer(email, password);
               resolve(profile);
             } catch (err) {
-              errEl.textContent = "That password didn't match — try again.";
+              errEl.textContent =
+                err.message === "must-change-password"
+                  ? "You still need to set your own password — do it on the main login screen first."
+                  : err.message === "account-reset"
+                    ? "Your login was reset — ask your teacher for your new code."
+                    : "That password didn't match — try again.";
               errEl.style.display = "block";
             }
           });

@@ -22,30 +22,59 @@ create students, students log in and practise with a friend, then take a
 
 ## Student passwords (updated)
 
-Passwords are no longer typed in by the teacher. When you add a student, the
-app generates a unique random password for them (`js/passwords.js`) — two
-short words plus two digits, e.g. `bravekiwi38`: easy for a child to type,
-impossible for a classmate to guess.
+Passwords are no longer typed in by the teacher, and no adult ever needs to
+know a student's password.
 
-- **Shown once.** New passwords appear in a dashed gold card on the roster,
-  with a **Print slips** button that lays them out two-up for cutting up and
-  handing out. They are *not* saved to Firestore or anywhere else — only
-  Firebase Auth holds them, hashed. Print or write them down before leaving
-  the page.
-- **Whole class at once.** The "Add a whole class at once" box takes one name
-  per line and creates every account in one go, then shows all the passwords
-  together ready to print.
-- **Forgotten passwords.** No part of this app can read or change someone
-  else's password, so a lost one has to be replaced. The 🔑 button on each
-  roster row opens step-by-step instructions, the student's internal login
-  email, and a freshly generated password to paste into
-  Firebase console → Authentication → Users → Edit user → Save.
-  (Doing it in-app would need a Cloud Function, which requires the Blaze
-  billing plan.)
+**Creating students.** Adding a student generates a unique random *one-time
+code* (`js/passwords.js`) — two short words plus two digits, e.g.
+`bravekiwi38`: easy for a child to type, impossible for a classmate to guess.
+The codes appear once in a dashed gold card on the roster, with a **Print
+slips** button that lays them out two-up for cutting up. They aren't saved
+anywhere, so print them before leaving the page. There's also an "Add a whole
+class at once" box that takes one name per line.
 
-Tell students their password is theirs alone. Because each one is different
-and unguessable, someone signing in as a classmate now has to have been
-handed that classmate's slip.
+**First login.** The code only works once. The first time a student signs in,
+the app makes them choose their own password before it will let them into the
+game menu. From that moment the printed slip is worthless — so a slip left on
+a desk, or a code read out loud, doesn't give anyone a way in.
+
+**Forgotten passwords.** The 🔑 **Reset password** button on each roster row
+does the whole job in one click: it issues the student a fresh one-time code,
+shown on screen to hand over quietly. Their old password stops working
+immediately, and they'll be asked to choose a new private one when they next
+log in. Their name, class and level all carry across.
+
+### How the reset works (and why it looks odd in the Firebase console)
+
+A browser can only change a password three ways: know the current one, click
+an emailed reset link, or use the Admin SDK on a server. A teacher has none of
+those — and the console's "Reset password" sends an email to the student's
+*made-up* address, so it goes nowhere. That's a dead end, not a setup problem.
+
+So the app doesn't change the old login — it replaces it:
+
+1. A brand-new Auth account is created with a new invisible email and the new
+   one-time code, carrying over the student's name, class and level.
+2. The class roster is repointed at the new account, so the login dropdown
+   picks it up automatically.
+3. The old profile is marked `retired`, and `studentLogin()` refuses to let a
+   retired account in — so the old password is dead even though Firebase Auth
+   still technically recognises it.
+
+Side effects worth knowing:
+
+- Retired Auth accounts pile up invisibly in **Authentication → Users** (their
+  emails end in `-r123@students.ttrace.app`). Harmless; delete them there
+  whenever you feel like tidying up.
+- A reset gives the student a new internal id, so any leaderboard wins they'd
+  already banked *that week* stay under the old id and won't merge with their
+  new ones. Resetting on a Monday avoids this entirely.
+- The existing security rules in this README already permit all of it — no
+  rule changes needed.
+
+**Students created before this change** keep their old passwords and aren't
+asked to pick a new one. Hit 🔑 Reset password on each of them once to move
+everyone onto the new system.
 
 ## Daily limit on leaderboard matches
 

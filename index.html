@@ -46,11 +46,31 @@
       <div id="loginError" class="error-text" style="display:none;"></div>
       <button class="btn gold" id="goBtn" disabled>Let's go 🚗</button>
     </div>
+
+    <!-- Shown instead of the form above when a student signs in with a
+         teacher-issued code and has to pick their own password. -->
+    <div class="panel" id="setPasswordPanel" style="display:none; flex-direction:column; gap:14px;">
+      <div>
+        <h1>Choose your own password 🔒</h1>
+        <p id="setPwGreeting">Your teacher gave you a code to get in. Now pick a password that only you know — you'll use it every time from now on.</p>
+      </div>
+      <div>
+        <div class="label">New password (at least 6 characters)</div>
+        <input type="password" id="newPw" />
+      </div>
+      <div>
+        <div class="label">Type it again</div>
+        <input type="password" id="newPw2" />
+      </div>
+      <p class="hint-text">Don't use your name, and don't tell anyone else — not even your best friend. If you forget it, your teacher can give you a new code.</p>
+      <div id="setPwError" class="error-text" style="display:none;"></div>
+      <button class="btn gold" id="savePwBtn">Save my password</button>
+    </div>
   </div>
 </div>
 
 <script type="module">
-import { findClassByCode, getClassRoster, studentLogin } from "./js/auth.js";
+import { findClassByCode, getClassRoster, studentLogin, setMyPassword } from "./js/auth.js";
 
 const studentSelect = document.getElementById("studentSelect");
 const passwordInput = document.getElementById("passwordInput");
@@ -88,19 +108,77 @@ function updateGoState() {
   goBtn.disabled = !(studentSelect.value && passwordInput.value.length >= 6);
 }
 
+function startSession(profile) {
+  sessionStorage.setItem("ttr_uid", profile.uid);
+  sessionStorage.setItem("ttr_name", profile.name);
+  sessionStorage.setItem("ttr_classId", profile.classId);
+  sessionStorage.setItem("ttr_className", foundClass.className);
+  sessionStorage.setItem("ttr_classCode", foundClass.classCode);
+  sessionStorage.setItem("ttr_level", profile.level ?? 1);
+  window.location.href = "menu.html";
+}
+
 goBtn.addEventListener("click", async () => {
   hideError();
   try {
     const profile = await studentLogin(studentSelect.value, passwordInput.value);
-    sessionStorage.setItem("ttr_uid", profile.uid);
-    sessionStorage.setItem("ttr_name", profile.name);
-    sessionStorage.setItem("ttr_classId", profile.classId);
-    sessionStorage.setItem("ttr_className", foundClass.className);
-    sessionStorage.setItem("ttr_classCode", foundClass.classCode);
-    sessionStorage.setItem("ttr_level", profile.level ?? 1);
-    window.location.href = "menu.html";
+    // Brand-new account, or one the teacher just reset: the code they typed is
+    // a one-time one, so make them choose a private password before going on.
+    if (profile.mustChangePassword) {
+      pendingProfile = profile;
+      document.getElementById("setPwGreeting").textContent =
+        `Hi ${profile.name}! Your teacher gave you a code to get in. Now pick a password that only you know — you'll use it every time from now on.`;
+      loginCard.style.display = "none";
+      introCard.style.display = "none";
+      setPasswordPanel.style.display = "flex";
+      document.getElementById("newPw").focus();
+      return;
+    }
+    startSession(profile);
   } catch (err) {
-    showError("That password didn't match — try again.");
+    if (err.message === "account-reset") {
+      showError("Your teacher has reset your login — ask them for your new code.");
+    } else {
+      showError("That password didn't match — try again.");
+    }
+  }
+});
+
+// ---------- Choosing your own password ----------
+let pendingProfile = null;
+const setPasswordPanel = document.getElementById("setPasswordPanel");
+const introCard = document.querySelector(".page .panel");
+const loginCard = goBtn.closest(".panel");
+
+document.getElementById("savePwBtn").addEventListener("click", async () => {
+  const pw = document.getElementById("newPw").value;
+  const pw2 = document.getElementById("newPw2").value;
+  const errEl = document.getElementById("setPwError");
+  const btn = document.getElementById("savePwBtn");
+  errEl.style.display = "none";
+
+  if (pw.length < 6) {
+    errEl.textContent = "Make it at least 6 characters long.";
+    errEl.style.display = "block"; return;
+  }
+  if (pw !== pw2) {
+    errEl.textContent = "The two passwords don't match — try typing them again.";
+    errEl.style.display = "block"; return;
+  }
+  if (pw === passwordInput.value) {
+    errEl.textContent = "Pick something different from the code your teacher gave you.";
+    errEl.style.display = "block"; return;
+  }
+
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await setMyPassword(pw);
+    startSession(pendingProfile);
+  } catch (err) {
+    btn.disabled = false; btn.textContent = "Save my password";
+    errEl.textContent = "Couldn't save that password — log in with your code again and retry.";
+    errEl.style.display = "block";
+    console.error(err);
   }
 });
 

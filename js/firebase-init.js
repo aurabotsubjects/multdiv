@@ -6,7 +6,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
   getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  signOut, onAuthStateChanged
+  signOut, onAuthStateChanged, updatePassword
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
@@ -37,7 +37,7 @@ export const workerAuth = getAuth(workerApp);
 export const workerDb = getFirestore(workerApp);
 
 export {
-  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged,
+  signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword,
   collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, query, where, orderBy, onSnapshot, serverTimestamp
 };
