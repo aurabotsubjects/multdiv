@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Times Tables Race — Connection Check</title>
+<link rel="stylesheet" href="css/style.css" />
+<style>
+  .check-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .check-row:last-child { border-bottom: none; }
+  .check-icon { font-size: 1.1rem; width: 24px; text-align: center; }
+  .check-body { flex: 1; }
+  .check-name { font-weight: 700; font-family: var(--font-display); }
+  .check-detail { font-size: 0.82rem; color: var(--ink-soft); font-family: var(--font-body); margin-top: 2px; word-break: break-word; }
+  .verdict { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="chrome-bar">
+    <div class="brand"><span class="flag">🩺</span> Connection Check</div>
+    <a class="who" href="index.html" style="text-decoration:underline;">← Back to log in</a>
+  </div>
+  <div class="stripe"></div>
+
+  <div class="page">
+    <div class="panel">
+      <h1>Is this device able to reach the game?</h1>
+      <p>If logging in doesn't work on one particular iPad or laptop, run this on that device. It checks each step separately so you can see which one is failing.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Checks</h2>
+      <div id="checkList" style="margin-top:10px;"></div>
+      <div class="verdict" id="verdict"></div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+        <button class="btn gold" id="rerunBtn">Run again</button>
+        <button class="btn ghost" id="copyBtn">Copy results</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+const list = document.getElementById("checkList");
+const verdict = document.getElementById("verdict");
+const results = [];
+
+function row(name, state, detail) {
+  const icon = state === "ok" ? "✅" : state === "warn" ? "⚠️" : state === "fail" ? "❌" : "⏳";
+  const el = document.createElement("div");
+  el.className = "check-row";
+  el.innerHTML = `<div class="check-icon">${icon}</div>
+    <div class="check-body"><div class="check-name">${name}</div>
+    <div class="check-detail">${detail}</div></div>`;
+  list.appendChild(el);
+  results.push(`${icon} ${name} — ${detail}`);
+}
+
+function timed(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => {
+      const e = new Error(`${label} didn't answer within ${ms / 1000}s`);
+      e.code = "app/timeout";
+      reject(e);
+    }, ms))
+  ]);
+}
+
+async function run() {
+  list.innerHTML = "";
+  verdict.innerHTML = "";
+  results.length = 0;
+  let hardFailure = false;
+
+  // 1. Is the device online at all?
+  row("This device thinks it is online", navigator.onLine ? "ok" : "fail",
+      navigator.onLine ? "The browser reports a working network connection."
+                       : "The browser reports NO network connection — check the wifi first.");
+  if (!navigator.onLine) hardFailure = true;
+
+  // 2. Can we even download Firebase's code? Blocked CDNs are a common cause
+  //    of a page that loads but does nothing.
+  let firebase = null;
+  try {
+    firebase = await timed(import("./js/firebase-init.js"), 20000, "Firebase's code");
+    row("Game code loaded", "ok", "Firebase libraries downloaded successfully.");
+  } catch (err) {
+    hardFailure = true;
+    row("Game code loaded", "fail",
+        `Couldn't load Firebase from gstatic.com (${err.code || err.message}). A content filter or firewall on this network is very likely blocking it.`);
+  }
+
+  // 3. The real test: an actual read from the database. This is the step that
+  //    hangs on networks which block Firestore's streaming connection.
+  if (firebase) {
+    const { db, collection, getDocs, query, where } = firebase;
+    const started = Date.now();
+    try {
+      await timed(
+        getDocs(query(collection(db, "classes"), where("classCode", "==", "__connection_check__"))),
+        20000, "The database"
+      );
+      const ms = Date.now() - started;
+      row("Database reachable", ms > 6000 ? "warn" : "ok",
+          `A test query came back in ${ms}ms.${ms > 6000 ? " That's slow — this network may be throttling or filtering the connection." : ""}`);
+    } catch (err) {
+      hardFailure = true;
+      row("Database reachable", "fail",
+          err.code === "app/timeout"
+            ? "The database never answered. This network is almost certainly blocking Firestore's connection — that's what makes the Find button do nothing."
+            : `The database refused the request (${err.code || err.message}).`);
+    }
+  }
+
+  // 4. Context worth having in a support conversation.
+  row("Device details", "info",
+      `${navigator.userAgent}<br>Page: ${location.href}<br>Time: ${new Date().toString()}`);
+
+  verdict.innerHTML = hardFailure
+    ? `<p class="error-text">Something above failed — that's why logging in doesn't work on this device. It is a network problem, not a wrong password, so resetting the student's password won't help.</p>`
+    : `<p>Everything this page can test is working. If a student still can't log in from here, it's likely their password — use the 🔑 Reset password button on the teacher dashboard.</p>`;
+}
+
+document.getElementById("rerunBtn").addEventListener("click", run);
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("copyBtn");
+  try {
+    await navigator.clipboard.writeText(results.join("\n").replace(/<br>/g, "\n"));
+    btn.textContent = "Copied ✓";
+  } catch (err) {
+    btn.textContent = "Copy failed";
+  }
+});
+
+run();
+</script>
+</body>
+</html>

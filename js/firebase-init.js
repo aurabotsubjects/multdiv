@@ -9,7 +9,7 @@ import {
   signOut, onAuthStateChanged, updatePassword
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
+  initializeFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc,
   updateDoc, query, where, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -26,7 +26,15 @@ const firebaseConfig = {
 // the student who opened the game menu / Player 1 of a 2-player game) ----
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Firestore normally talks over a long-lived streaming connection. Plenty of
+// school networks, filtering proxies and locked-down tablets block exactly
+// that, and when they do the SDK doesn't error — it silently retries forever,
+// so buttons appear dead on *some* devices and work fine on others.
+// Auto-detect spots the blockage and falls back to ordinary HTTP polling,
+// which those networks do allow. Slightly chattier; far more reliable.
+const firestoreSettings = { experimentalAutoDetectLongPolling: true };
+export const db = initializeFirestore(app, firestoreSettings);
 
 // ---- worker app: a second, independent Firebase session used only to (a)
 // create new accounts without signing the admin/teacher out of their own
@@ -34,7 +42,7 @@ export const db = getFirestore(app);
 // Same project, totally separate auth state. ----
 export const workerApp = initializeApp(firebaseConfig, "worker");
 export const workerAuth = getAuth(workerApp);
-export const workerDb = getFirestore(workerApp);
+export const workerDb = initializeFirestore(workerApp, firestoreSettings);
 
 export {
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword,

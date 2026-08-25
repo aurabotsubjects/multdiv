@@ -45,6 +45,7 @@
 
       <div id="loginError" class="error-text" style="display:none;"></div>
       <button class="btn gold" id="goBtn" disabled>Let's go 🚗</button>
+      <p class="hint-text" style="margin-top:4px;">Stuck on this screen? <a href="connection-check.html" style="text-decoration:underline;">Check this device's connection</a>.</p>
     </div>
 
     <!-- Shown instead of the form above when a student signs in with a
@@ -71,6 +72,7 @@
 
 <script type="module">
 import { findClassByCode, getClassRoster, studentLogin, setMyPassword } from "./js/auth.js";
+import { withTimeout, describeError } from "./js/net.js";
 
 const studentSelect = document.getElementById("studentSelect");
 const passwordInput = document.getElementById("passwordInput");
@@ -80,23 +82,48 @@ const loginError = document.getElementById("loginError");
 let foundClass = null;
 let roster = [];
 
-document.getElementById("findClassBtn").addEventListener("click", async () => {
+const findBtn = document.getElementById("findClassBtn");
+const classCodeInput = document.getElementById("classCodeInput");
+
+// This used to have no error handling at all: if the lookup failed or hung
+// (common on school wifi that blocks Firestore's streaming connection) the
+// button silently did nothing and the student was stuck on step one with no
+// idea why. Now it always says something.
+async function findClass() {
   hideError();
-  const code = document.getElementById("classCodeInput").value.trim();
-  if (!code) return;
-  foundClass = await findClassByCode(code);
-  if (!foundClass) {
-    showError("Couldn't find that class code — check with your teacher.");
-    studentSelect.disabled = true;
-    studentSelect.innerHTML = '<option value="">Enter your class code first</option>';
+  const code = classCodeInput.value.trim();
+  if (!code) {
+    showError("Type your class code first.");
     return;
   }
-  roster = await getClassRoster(foundClass.id);
-  studentSelect.innerHTML = roster.length
-    ? '<option value="">Select your name</option>' + roster.map(s => `<option value="${s.email}">${s.name}</option>`).join("")
-    : '<option value="">No students in this class yet</option>';
-  studentSelect.disabled = false;
-});
+
+  findBtn.disabled = true;
+  findBtn.textContent = "Looking…";
+  try {
+    foundClass = await withTimeout(findClassByCode(code), 15000, "The class list");
+    if (!foundClass) {
+      showError("Couldn't find that class code — check the spelling with your teacher.");
+      studentSelect.disabled = true;
+      studentSelect.innerHTML = '<option value="">Enter your class code first</option>';
+      return;
+    }
+    roster = await withTimeout(getClassRoster(foundClass.id), 15000, "The class list");
+    studentSelect.innerHTML = roster.length
+      ? '<option value="">Select your name</option>' + roster.map(s => `<option value="${s.email}">${s.name}</option>`).join("")
+      : '<option value="">No students in this class yet</option>';
+    studentSelect.disabled = false;
+  } catch (err) {
+    console.error("Class lookup failed:", err);
+    showError(describeError(err));
+    studentSelect.disabled = true;
+  } finally {
+    findBtn.disabled = false;
+    findBtn.textContent = "Find";
+  }
+}
+
+findBtn.addEventListener("click", findClass);
+classCodeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") findClass(); });
 
 studentSelect.addEventListener("change", () => {
   passwordInput.disabled = !studentSelect.value;
@@ -120,6 +147,8 @@ function startSession(profile) {
 
 goBtn.addEventListener("click", async () => {
   hideError();
+  goBtn.disabled = true;
+  goBtn.textContent = "Checking…";
   try {
     const profile = await studentLogin(studentSelect.value, passwordInput.value);
     // Brand-new account, or one the teacher just reset: the code they typed is
@@ -136,13 +165,18 @@ goBtn.addEventListener("click", async () => {
     }
     startSession(profile);
   } catch (err) {
-    if (err.message === "account-reset") {
-      showError("Your teacher has reset your login — ask them for your new code.");
-    } else {
-      showError("That password didn't match — try again.");
-    }
+    // Never blame the password for something that wasn't the password —
+    // describeError() tells apart a genuine mismatch from a blocked network,
+    // a security-rules refusal or a missing profile.
+    console.error("Student login failed:", err);
+    showError(describeError(err));
+  } finally {
+    goBtn.disabled = false;
+    goBtn.textContent = "Let's go 🚗";
   }
 });
+
+passwordInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !goBtn.disabled) goBtn.click(); });
 
 // ---------- Choosing your own password ----------
 let pendingProfile = null;
@@ -176,7 +210,7 @@ document.getElementById("savePwBtn").addEventListener("click", async () => {
     startSession(pendingProfile);
   } catch (err) {
     btn.disabled = false; btn.textContent = "Save my password";
-    errEl.textContent = "Couldn't save that password — log in with your code again and retry.";
+    errEl.textContent = describeError(err);
     errEl.style.display = "block";
     console.error(err);
   }

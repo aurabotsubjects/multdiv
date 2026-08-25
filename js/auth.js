@@ -12,11 +12,32 @@
 // doesn't get signed out of their own session in the process.
 // ============================================================
 import { generatePassword } from "./passwords.js";
+import { withTimeout } from "./net.js";
 import {
   auth, db, workerAuth, workerDb,
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updatePassword,
   collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp
 } from "./firebase-init.js";
+
+// Codes copied off a printed slip, or pasted by a teacher, very often pick up
+// a stray leading/trailing space. Retrying once with it trimmed is the
+// difference between "my password doesn't work" and getting on with the game.
+function looksLikeWrongPassword(err) {
+  return ["auth/invalid-credential", "auth/invalid-login-credentials",
+          "auth/wrong-password", "auth/user-not-found"].includes(err?.code);
+}
+
+async function signInAllowingStraySpaces(authInstance, email, password) {
+  try {
+    return await signInWithEmailAndPassword(authInstance, email, password);
+  } catch (err) {
+    const trimmed = (password || "").trim();
+    if (trimmed && trimmed !== password && looksLikeWrongPassword(err)) {
+      return await signInWithEmailAndPassword(authInstance, email, trimmed);
+    }
+    throw err;
+  }
+}
 
 export function slugify(name) {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -48,7 +69,7 @@ export async function loginWithEmail(email, password) {
 // they're not approved yet so a pending/denied account can't sit "logged in".
 export async function teacherLogin(email, password) {
   const cred = await signInWithEmailAndPassword(auth, email, password);
-  const snap = await getDoc(doc(db, "users", cred.user.uid));
+  const snap = await withTimeout(getDoc(doc(db, "users", cred.user.uid)), 15000, "Your account");
   if (!snap.exists() || snap.data().role !== "teacher") {
     await signOut(auth);
     throw new Error("This account isn't set up as a teacher.");
@@ -89,9 +110,18 @@ export async function getClassRoster(classId) {
 // issued this student a brand-new login, so the old one must stop working
 // even though Firebase Auth still recognises the old password.
 export async function studentLogin(email, password) {
-  const cred = await signInWithEmailAndPassword(auth, email, password);
-  const snap = await getDoc(doc(db, "users", cred.user.uid));
-  if (!snap.exists()) throw new Error("No profile found for this account.");
+  // Step 1: Firebase Auth checks the password.
+  const cred = await signInAllowingStraySpaces(auth, email, password);
+
+  // Step 2: we read their profile. This is a SEPARATE thing that can fail on
+  // its own (blocked network, security rules, a missing profile doc) — and
+  // when it does it is emphatically not a wrong password, so it throws its
+  // own distinct errors rather than being lumped in with step 1.
+  const snap = await withTimeout(getDoc(doc(db, "users", cred.user.uid)), 15000, "Your account");
+  if (!snap.exists()) {
+    await signOut(auth);
+    throw new Error("profile-missing");
+  }
   if (snap.data().retired) {
     await signOut(auth);
     throw new Error("account-reset");
@@ -112,9 +142,12 @@ export async function setMyPassword(newPassword) {
 
 // ---------- Student login (Player 2 — worker session, alongside Player 1) ----------
 export async function studentLoginSecondPlayer(email, password) {
-  const cred = await signInWithEmailAndPassword(workerAuth, email, password);
-  const snap = await getDoc(doc(workerDb, "users", cred.user.uid));
-  if (!snap.exists()) throw new Error("No profile found for this account.");
+  const cred = await signInAllowingStraySpaces(workerAuth, email, password);
+  const snap = await withTimeout(getDoc(doc(workerDb, "users", cred.user.uid)), 15000, "That account");
+  if (!snap.exists()) {
+    await signOut(workerAuth);
+    throw new Error("profile-missing");
+  }
   const profile = snap.data();
   if (profile.retired) {
     await signOut(workerAuth);
@@ -256,6 +289,22 @@ export async function resetStudentPassword({ classId, classCode, student }) {
     retiredEmails: oldEmail ? [...retiredEmails, oldEmail] : retiredEmails
   });
 
+  // Before handing a child a code, prove the new account actually works.
+  // workerAuth is still signed in AS that student, so this reads their profile
+  // exactly the way their own browser will — if security rules or a failed
+  // write would break their login, we find out here instead of at the desk of
+  // a confused 9-year-old.
+  const check = await withTimeout(getDoc(doc(workerDb, "users", cred.user.uid)), 15000, "The new account");
   await signOut(workerAuth);
-  return { uid: cred.user.uid, name: student.name, email, password };
+  if (!check.exists()) {
+    throw new Error("The new login was created but its profile couldn't be read back — check the Firestore security rules, then try again.");
+  }
+
+  return {
+    uid: cred.user.uid, name: student.name, email, password,
+    // idx < 0 means the class list didn't hold an entry for this student's old
+    // account, so the new one was added rather than swapped in. Worth a look:
+    // the name may now appear twice in the login dropdown.
+    rosterMismatch: idx < 0
+  };
 }

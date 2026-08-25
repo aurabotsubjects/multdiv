@@ -76,6 +76,48 @@ Side effects worth knowing:
 asked to pick a new one. Hit 🔑 Reset password on each of them once to move
 everyone onto the new system.
 
+## When logging in doesn't work
+
+Signing in is **two separate steps**, and telling them apart is most of the
+battle:
+
+1. **Firebase Auth checks the password.** Only this step can produce a genuine
+   "wrong password".
+2. **The app reads the student's profile from Firestore.** This step can fail
+   entirely on its own — blocked network, security rules, a missing profile —
+   and it used to be reported as "That password didn't match", which sent
+   teachers off resetting accounts that were never broken.
+
+The app now names the real cause, and shows the raw error code for anything
+unexpected. Two specific fixes are in place:
+
+- **Nothing hangs silently any more.** Every Firebase call has a 15-second
+  timeout, and the Find button shows "Looking…" and always reports what
+  happened. Previously it had no error handling at all: if the lookup failed,
+  the button did nothing, forever, with no message — the classic "it won't let
+  me past the class code" symptom.
+- **Firestore now auto-detects blocked streaming connections.** It normally
+  talks over a long-lived streaming connection that many school networks,
+  proxies and filtered tablets quietly block; when that happens the SDK
+  retries forever instead of failing. `experimentalAutoDetectLongPolling`
+  (in `js/firebase-init.js`) spots this and falls back to plain HTTP polling,
+  which those networks do allow. This is the usual reason a login works on
+  most devices and hangs on a few.
+
+**`connection-check.html`** — open it on the device that's misbehaving. It
+tests each step separately (online? Firebase code downloaded? database
+reachable, and how fast?) and tells you whether you're looking at a network
+problem or a password problem. There's a link to it on the login screen.
+
+Two smaller fixes in the same area: a stray space on a code copied off a slip
+is now retried trimmed instead of being rejected, and Enter submits both the
+class code and the password.
+
+If a reset ever produces a code that doesn't work, the reset itself now checks
+the new account can be read back — signed in as that student — before showing
+you the code, so a security-rules problem surfaces on your screen rather than
+at a confused child's desk.
+
 ## Daily limit on leaderboard matches
 
 To stop a single game being farmed for easy wins, only the first

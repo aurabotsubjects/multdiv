@@ -12,6 +12,7 @@
 // game actually needs to *act* for Player 2.
 // ============================================================
 import { getClassRoster, studentLoginSecondPlayer } from "./auth.js";
+import { describeError } from "./net.js";
 import { createAIOpponent } from "./ai-opponent.js";
 
 export function renderPlayer2Login(container, classId, excludeUid) {
@@ -60,12 +61,8 @@ export function renderPlayer2Login(container, classId, excludeUid) {
               const profile = await studentLoginSecondPlayer(email, password);
               resolve(profile);
             } catch (err) {
-              errEl.textContent =
-                err.message === "must-change-password"
-                  ? "You still need to set your own password — do it on the main login screen first."
-                  : err.message === "account-reset"
-                    ? "Your login was reset — ask your teacher for your new code."
-                    : "That password didn't match — try again.";
+              console.error("Player 2 login failed:", err);
+              errEl.textContent = describeError(err);
               errEl.style.display = "block";
             }
           });

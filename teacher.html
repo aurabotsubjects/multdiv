@@ -295,6 +295,7 @@ function showResetDialog(student) {
         <h2>✅ Done — give ${result.name} this code</h2>
         <p style="margin-top:12px; font-size:1.4rem;" class="pw-code">${result.password}</p>
         <p class="hint-text" style="margin-top:10px;">Hand it over quietly — once they log in, the app asks them to choose their own password and this code stops working.</p>
+        ${result.rosterMismatch ? '<p class="error-text" style="margin-top:10px;">Heads up: the class list didn\'t have a matching entry for their old login, so this one was added rather than swapped in. Check their name only appears once in the student login dropdown.</p>' : ''}
         <div class="pw-actions">
           <button class="btn" id="copyResetPw">Copy code</button>
           <button class="btn ghost" id="closeResetBtn">Close</button>
