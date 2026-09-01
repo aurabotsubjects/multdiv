@@ -535,6 +535,82 @@
   @media (prefers-reduced-motion: reduce){
     *{ transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
   }
+
+  /* ============ TURN-BASED TIME TRIAL OVERRIDES ============ */
+  .vault-floor{ max-width: 820px; }
+  .safe-unit{
+    flex: 1 1 100%;
+    max-width: 820px;
+    gap: clamp(6px, 2vh, 16px);
+  }
+  .paper-card{
+    width: 100%;
+    max-width: 430px;
+    height: clamp(78px, 22vh, 210px);
+  }
+  .paper-blank .lock-icon{ font-size: 2.6rem; }
+  .paper-blank .blank-label{ font-size: 1rem; }
+  .paper-title{ font-size: 0.95rem; }
+  .paper-eq{ font-size: clamp(1.3rem, 3.4vh, 2.1rem); }
+  .paper-equations::before{ font-size: 0.8rem; }
+
+  .safe{ max-width: 560px; border-radius: 34px; }
+  .safe-door{ padding: clamp(14px, 3.5vh, 34px) 22px clamp(16px, 4vh, 38px); gap: clamp(10px, 2.4vh, 24px); }
+  .safe-interior{ font-size: 4rem; }
+  .dial-area{ gap: 20px; }
+  .dial-outer{
+    width: clamp(104px, min(26vh, 34vw), 220px);
+    height: clamp(104px, min(26vh, 34vw), 220px);
+  }
+  .dial-inner{
+    width: clamp(68px, min(17vh, 22vw), 148px);
+    height: clamp(68px, min(17vh, 22vw), 148px);
+  }
+  .dial-display{ font-size: 2.6rem; min-width: 106px; }
+  .nudge-btn{ width: 46px; height: 38px; font-size: 1.1rem; }
+  .handle-grip{ width: 40px; height: 40px; }
+  .handle-bar{ width: 100px; height: 20px; }
+  .handle-label{ font-size: 0.82rem; }
+  .status-text{ font-size: 1rem; margin-top: 6px; }
+
+  /* Turn heading */
+  .turn-title{
+    font-family: 'Fredoka', sans-serif;
+    font-size: clamp(1.2rem, 3.4vw, 1.8rem);
+    color: var(--brass-light);
+    letter-spacing: 0.02em;
+    text-align: center;
+    flex: 0 0 auto;
+  }
+  .turn-title.p2{ color: #8fd3ff; }
+
+  /* Stopwatch */
+  .timer{
+    margin-top: 4px;
+    font-family: 'Fredoka', sans-serif;
+    font-size: clamp(1.5rem, 4.4vw, 2.3rem);
+    color: #6bff9e;
+    background: #14170f;
+    border: 3px solid #3c2c0f;
+    border-radius: 10px;
+    padding: 2px 14px;
+    min-width: 118px;
+    text-align: center;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.7);
+  }
+  .timer.running{ color: #ffd76b; }
+
+  .time-chip{
+    margin-top: 2px;
+    font-family: 'Fredoka', sans-serif;
+    font-size: 1rem;
+    color: #9aa2bd;
+  }
+  .score-block.active-turn{
+    border-color: var(--brass-light);
+    box-shadow: 0 0 0 3px rgba(227,172,72,0.3), 0 10px 28px rgba(0,0,0,0.35);
+  }
+
 </style>
 </head>
 <body>
@@ -545,7 +621,7 @@
   <section id="setup-screen" class="screen active">
     <div class="setup-card">
       <h1 class="logo">BREAK <span>THE</span> BANK</h1>
-      <p class="tagline">Two safes. One vault. Crack it first.</p>
+      <p class="tagline">One vault. Two cracks at it. Fastest safebreaker wins.</p>
       <div class="setup-players">
         <div class="setup-player">
           <h2 id="p1-heading">Player 1</h2>
@@ -588,101 +664,64 @@
     </div>
 
     <div class="scoreboard">
-      <div class="score-block">
+      <div class="score-block" id="sb-p1">
         <span class="score-label">P1 &middot; <span id="p1-table-label"></span></span>
         <span class="score-value" id="p1-score">0</span>
+        <span class="time-chip" id="p1-time">—</span>
       </div>
       <div class="round-block">
         <span class="round-label">ROUND</span>
         <span class="round-value"><span id="round-current">1</span>/5</span>
+        <div class="timer" id="timer">0.0s</div>
       </div>
-      <div class="score-block">
+      <div class="score-block" id="sb-p2">
         <span class="score-label">P2 &middot; <span id="p2-table-label"></span></span>
         <span class="score-value" id="p2-score">0</span>
+        <span class="time-chip" id="p2-time">—</span>
       </div>
     </div>
 
     <div class="banner" id="banner"></div>
 
     <div class="vault-floor">
-      <!-- PLAYER 1 SAFE -->
       <div class="safe-unit">
-        <div class="paper-card" id="p1-paper">
-          <div class="paper-inner" id="p1-paperinner">
+        <div class="turn-title" id="turn-title">Player 1's turn</div>
+        <div class="paper-card" id="paper">
+          <div class="paper-inner" id="paperinner">
             <div class="paper-face paper-blank">
               <span class="lock-icon">🔒</span>
-              <span class="blank-label">Tap to view the job</span>
+              <span class="blank-label">Tap to start the clock</span>
             </div>
             <div class="paper-face paper-equations">
-              <div class="paper-title" id="p1-paper-title">The Job — Player 1</div>
-              <div class="paper-eqs" id="p1-eqs"></div>
+              <div class="paper-title" id="paper-title">The Job</div>
+              <div class="paper-eqs" id="eqs"></div>
             </div>
           </div>
         </div>
         <div class="safe">
           <div class="safe-interior"><span>💰✨🪙</span></div>
-          <div class="safe-door" id="p1-door">
+          <div class="safe-door" id="door">
             <div class="dial-area">
-              <div class="dial-outer" id="p1-dial">
+              <div class="dial-outer" id="dial">
                 <div class="dial-pointer"></div>
                 <div class="dial-inner"></div>
               </div>
               <div class="dial-display-wrap">
-                <div class="dial-display" id="p1-display">2</div>
+                <div class="dial-display" id="display">2</div>
                 <div class="nudge-row">
-                  <button class="nudge-btn" id="p1-down">▼</button>
-                  <button class="nudge-btn" id="p1-up">▲</button>
+                  <button class="nudge-btn" id="nudge-down">▼</button>
+                  <button class="nudge-btn" id="nudge-up">▲</button>
                 </div>
               </div>
             </div>
-            <button class="handle-btn" id="p1-handle">
+            <button class="handle-btn" id="handle">
               <span class="handle-grip"></span>
               <span class="handle-bar"></span>
               <span class="handle-label">LOCK IN</span>
             </button>
           </div>
         </div>
-        <div class="status-text" id="p1-status">Turn the dial, then lock it in.</div>
-      </div>
-
-      <!-- PLAYER 2 SAFE -->
-      <div class="safe-unit">
-        <div class="paper-card" id="p2-paper">
-          <div class="paper-inner" id="p2-paperinner">
-            <div class="paper-face paper-blank">
-              <span class="lock-icon">🔒</span>
-              <span class="blank-label">Tap to view the job</span>
-            </div>
-            <div class="paper-face paper-equations">
-              <div class="paper-title" id="p2-paper-title">The Job — Player 2</div>
-              <div class="paper-eqs" id="p2-eqs"></div>
-            </div>
-          </div>
-        </div>
-        <div class="safe">
-          <div class="safe-interior"><span>💰✨🪙</span></div>
-          <div class="safe-door" id="p2-door">
-            <div class="dial-area">
-              <div class="dial-outer" id="p2-dial">
-                <div class="dial-pointer"></div>
-                <div class="dial-inner"></div>
-              </div>
-              <div class="dial-display-wrap">
-                <div class="dial-display" id="p2-display">2</div>
-                <div class="nudge-row">
-                  <button class="nudge-btn" id="p2-down">▼</button>
-                  <button class="nudge-btn" id="p2-up">▲</button>
-                </div>
-              </div>
-            </div>
-            <button class="handle-btn" id="p2-handle">
-              <span class="handle-grip"></span>
-              <span class="handle-bar"></span>
-              <span class="handle-label">LOCK IN</span>
-            </button>
-          </div>
-        </div>
-        <div class="status-text" id="p2-status">Turn the dial, then lock it in.</div>
+        <div class="status-text" id="status">Tap the folder to start the clock.</div>
       </div>
     </div>
   </section>
@@ -723,7 +762,6 @@ let p2AIProfile = null;
 let p2Name = null;
 
 document.getElementById('p1-heading').textContent = p1Name;
-document.getElementById('p1-paper-title').textContent = `The Job — ${p1Name}`;
 document.getElementById('p1-readout').textContent = levelInfo(p1Level).label;
 getClassRoster(classId).then(roster => {
   const sel = document.getElementById('p2NameSelect');
@@ -743,7 +781,6 @@ document.getElementById('p2GoBtn').addEventListener('click', async () => {
     p2Uid = profile.uid;
     p2IsAI = false; p2AIProfile = null; p2Name = profile.name;
     document.getElementById('p2-heading').textContent = profile.name;
-    document.getElementById('p2-paper-title').textContent = `The Job — ${profile.name}`;
     document.getElementById('p2LoginBox').innerHTML = `<p>${profile.name} — ${levelInfo(p2Level).label} ✔️</p>`;
     window.__breakBankCheckStart && window.__breakBankCheckStart();
   } catch (err) {
@@ -760,7 +797,6 @@ function setP2Mode(mode){
   if (mode === 'human') {
     p2Level = null; p2IsAI = false; p2AIProfile = null; p2Name = null;
     document.getElementById('p2-heading').textContent = 'Player 2';
-    document.getElementById('p2-paper-title').textContent = 'The Job — Player 2';
     document.querySelectorAll('.p2-diff-btn').forEach(b => b.classList.remove('sel'));
     document.getElementById('p2AIReadout').textContent = '';
     window.__breakBankCheckStart && window.__breakBankCheckStart();
@@ -777,7 +813,6 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     p2AIProfile = applyAISettings(bot.profile, "break-the-bank", await aiSettingsPromise);
     p2Name = bot.name;
     document.getElementById('p2-heading').textContent = bot.name;
-    document.getElementById('p2-paper-title').textContent = `The Job — ${bot.name}`;
     document.getElementById('p2AIReadout').textContent = `${bot.name} — ${levelInfo(bot.level).label} ✔️`;
     window.__breakBankCheckStart && window.__breakBankCheckStart();
   });
@@ -795,13 +830,23 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
 
   const state = {
     players: {
-      1: { level: null, score: 0, step: 0, dialValue: 2, visualRot: 0, rotAccum: 0, equations: [], isAI: false, aiProfile: null, aiCancel: null, aiName: null },
-      2: { level: null, score: 0, step: 0, dialValue: 2, visualRot: 0, rotAccum: 0, equations: [], isAI: false, aiProfile: null, aiCancel: null, aiName: null }
+      1: { level: null, score: 0, name: null, isAI: false, aiProfile: null, aiCancel: null },
+      2: { level: null, score: 0, name: null, isAI: false, aiProfile: null, aiCancel: null }
     },
     round: 1,
     maxRounds: 5,
-    roundWon: false,
-    paperTimeout: { 1: null, 2: null }
+    turn: 1,
+    equations: { 1: [], 2: [] },
+    times: { 1: null, 2: null },
+    step: 0,
+    dialValue: 2,
+    visualRot: 0,
+    rotAccum: 0,
+    armed: false,       // true once the clock is running for this turn
+    finished: false,    // this turn's safe is cracked
+    startTime: 0,
+    rafId: null,
+    paperTimeout: null
   };
 
   const el = (id) => document.getElementById(id);
@@ -818,7 +863,11 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     showScreen('setup-screen');
   });
   el('quit-btn').addEventListener('click', () => {
-    if(confirm('Start a new game? Current progress will be lost.')) showScreen('setup-screen');
+    if(confirm('Start a new game? Current progress will be lost.')){
+      stopClock();
+      cancelAI();
+      showScreen('setup-screen');
+    }
   });
 
   function showScreen(id){
@@ -829,107 +878,201 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   // ---------------- Game flow ----------------
   function startGame(){
     state.players[1].level = p1Level;
+    state.players[1].name = p1Name;
+    state.players[1].isAI = false;
     state.players[2].level = p2Level;
     state.players[2].isAI = p2IsAI;
     state.players[2].aiProfile = p2AIProfile;
-    state.players[2].aiName = p2Name;
+    state.players[2].name = p2Name || 'Player 2';
     state.players[1].score = 0;
     state.players[2].score = 0;
     state.round = 1;
     el('p1-table-label').textContent = levelInfo(state.players[1].level).label;
     el('p2-table-label').textContent = levelInfo(state.players[2].level).label;
-    if(state.players[2].isAI){
-      el('p2-dial').style.pointerEvents = 'none';
-      el('p2-handle').style.display = 'none';
-      el('p2-up').style.display = 'none';
-      el('p2-down').style.display = 'none';
-    }
     updateScoreUI();
     showScreen('game-screen');
     setupRound();
   }
 
-  function randInt(min, max){ return Math.floor(Math.random() * (max - min + 1)) + min; }
-
   function generateEquations(level, count){
     const eqs = [];
-    for(let i = 0; i < count; i++){
-      eqs.push(generateQuestion(level));
-    }
+    for(let i = 0; i < count; i++) eqs.push(generateQuestion(level));
     return eqs;
   }
 
   function renderPaper(player){
-    const st = state.players[player];
-    const wrap = el(`p${player}-eqs`);
+    const wrap = el('eqs');
     wrap.innerHTML = '';
-    st.equations.forEach((eq, i) => {
+    const list = state.equations[player];
+    list.forEach((eq, i) => {
       const div = document.createElement('div');
       div.className = 'paper-eq';
-      const prefix = st.equations.length > 1 ? (i + 1) + '. ' : '';
+      const prefix = list.length > 1 ? (i + 1) + '. ' : '';
       div.innerHTML = prefix + '<b>' + eq.text + '</b> = ?';
       wrap.appendChild(div);
     });
   }
 
-  function setDial(player, value, animateRotation){
-    const st = state.players[player];
-    value = wrapValue(value);
-    st.dialValue = value;
-    el(`p${player}-display`).textContent = value;
-    if(animateRotation !== false){
-      st.visualRot += 0; // rotation already tracked separately in drag
-    }
+  function setDial(value){
+    state.dialValue = wrapValue(value);
+    el('display').textContent = state.dialValue;
   }
 
-  function resetDoors(){
-    [1,2].forEach(p => {
-      el(`p${p}-door`).classList.remove('open');
-    });
+  // ---------------- Clock ----------------
+  function fmt(ms){ return (ms / 1000).toFixed(1) + 's'; }
+
+  function tick(){
+    if(!state.armed || state.finished) return;
+    el('timer').textContent = fmt(performance.now() - state.startTime);
+    state.rafId = requestAnimationFrame(tick);
+  }
+  function startClock(){
+    state.armed = true;
+    state.startTime = performance.now();
+    el('timer').classList.add('running');
+    tick();
+  }
+  function stopClock(){
+    if(state.rafId) cancelAnimationFrame(state.rafId);
+    state.rafId = null;
+    el('timer').classList.remove('running');
   }
 
-  function setupRound(){
-    state.roundWon = false;
-    resetDoors();
-    el('round-current').textContent = state.round;
-    hideBanner();
-
+  function cancelAI(){
     [1,2].forEach(p => {
       const st = state.players[p];
-      st.step = 0;
-      st.equations = generateEquations(st.level, state.round);
-      renderPaper(p);
-      setDial(p, 2);
-      clearTimeout(state.paperTimeout[p]);
-      el(`p${p}-paperinner`).classList.remove('flipped');
-      const statusEl = el(`p${p}-status`);
-      if(st.isAI){
-        statusEl.textContent = `🤖 ${st.aiName} is cracking the safe…`;
-        statusEl.className = 'status-text';
-        scheduleNextAIAttempt(p);
-      } else {
-        statusEl.textContent = state.round === 1 && st.equations.length === 1
-          ? 'Turn the dial, then lock it in.'
-          : `Solve them in order — start with #1.`;
-        statusEl.className = 'status-text';
-      }
+      if(st.aiCancel){ try{ st.aiCancel(); }catch(e){} st.aiCancel = null; }
     });
+  }
+
+  // ---------------- Round / turn flow ----------------
+  function setupRound(){
+    state.times[1] = null;
+    state.times[2] = null;
+    el('round-current').textContent = state.round;
+    el('p1-time').textContent = '—';
+    el('p2-time').textContent = '—';
+    hideBanner();
+    // Each player gets their own equations at their own level.
+    state.equations[1] = generateEquations(state.players[1].level, state.round);
+    state.equations[2] = generateEquations(state.players[2].level, state.round);
+    startTurn(1);
+  }
+
+  function startTurn(player){
+    cancelAI();
+    stopClock();
+    state.turn = player;
+    state.step = 0;
+    state.armed = false;
+    state.finished = false;
+    state.rotAccum = 0;
+    setDial(2);
+    el('timer').textContent = '0.0s';
+    el('door').classList.remove('open');
+    clearTimeout(state.paperTimeout);
+    el('paperinner').classList.remove('flipped');
+
+    const st = state.players[player];
+    el('turn-title').textContent = `${st.name}'s turn`;
+    el('turn-title').className = 'turn-title p' + player;
+    el('sb-p1').classList.toggle('active-turn', player === 1);
+    el('sb-p2').classList.toggle('active-turn', player === 2);
+    el('paper-title').textContent = `The Job — ${st.name}`;
+    renderPaper(player);
+
+    const statusEl = el('status');
+    statusEl.className = 'status-text';
+
+    if(st.isAI){
+      el('dial').style.pointerEvents = 'none';
+      el('handle').style.visibility = 'hidden';
+      el('nudge-up').style.visibility = 'hidden';
+      el('nudge-down').style.visibility = 'hidden';
+      statusEl.textContent = `🤖 ${st.name} is opening the folder…`;
+      setTimeout(() => {
+        if(state.turn !== player || state.finished) return;
+        peekPaper();
+        startClock();
+        statusEl.textContent = `🤖 ${st.name} is cracking the safe…`;
+        scheduleNextAIAttempt(player);
+      }, 900);
+    } else {
+      el('dial').style.pointerEvents = '';
+      el('handle').style.visibility = '';
+      el('nudge-up').style.visibility = '';
+      el('nudge-down').style.visibility = '';
+      const target = player === 2 && state.times[1] != null
+        ? ` Beat ${state.players[1].name}'s ${fmt(state.times[1])}!`
+        : '';
+      statusEl.textContent = `${st.name} — tap the folder to start the clock.` + target;
+      if(player === 2 && state.times[1] != null){
+        showBanner(`⏱️ ${state.players[2].name}, beat ${fmt(state.times[1])}`);
+      } else {
+        showBanner(`🔐 ${st.name} goes first — tap the folder when you're ready`);
+      }
+    }
   }
 
   function scheduleNextAIAttempt(player){
     const st = state.players[player];
     if(st.aiCancel){ st.aiCancel(); st.aiCancel = null; }
-    if(!st.isAI || state.roundWon) return;
-    const eq = st.equations[st.step];
+    if(!st.isAI || state.finished || state.turn !== player) return;
+    const eq = state.equations[player][state.step];
     if(!eq) return;
     st.aiCancel = scheduleAIAnswer(st.aiProfile, { answer: eq.answer }, (isCorrect, value) => {
       st.aiCancel = null;
-      if(state.roundWon) return;
-      st.dialValue = value;
-      el(`p${player}-display`).textContent = value;
-      submitAnswer(player);
-      if(!state.roundWon) scheduleNextAIAttempt(player);
+      if(state.finished || state.turn !== player) return;
+      setDial(value);
+      submitAnswer();
+      if(!state.finished) scheduleNextAIAttempt(player);
     });
+  }
+
+  function finishTurn(){
+    const player = state.turn;
+    const elapsed = performance.now() - state.startTime;
+    state.finished = true;
+    stopClock();
+    cancelAI();
+    state.times[player] = elapsed;
+    el('timer').textContent = fmt(elapsed);
+    el(`p${player}-time`).textContent = fmt(elapsed);
+    el('door').classList.add('open');
+
+    const st = state.players[player];
+    const statusEl = el('status');
+    statusEl.className = 'status-text good';
+    statusEl.textContent = `Cracked it in ${fmt(elapsed)}!`;
+
+    if(player === 1){
+      showBanner(`💥 ${st.name} cracked it in ${fmt(elapsed)} — ${state.players[2].name}, you're up!`);
+      setTimeout(() => startTurn(2), 2600);
+    } else {
+      finishRound();
+    }
+  }
+
+  function finishRound(){
+    const t1 = state.times[1], t2 = state.times[2];
+    const pts = state.round;
+    let msg;
+    if(t1 < t2){
+      state.players[1].score += pts;
+      msg = `🏆 ${state.players[1].name} wins round ${state.round} by ${((t2-t1)/1000).toFixed(1)}s! +${pts}`;
+    } else if(t2 < t1){
+      state.players[2].score += pts;
+      msg = `🏆 ${state.players[2].name} wins round ${state.round} by ${((t1-t2)/1000).toFixed(1)}s! +${pts}`;
+    } else {
+      state.players[1].score += pts;
+      state.players[2].score += pts;
+      msg = `⚖️ Dead heat! Both crews get +${pts}`;
+    }
+    updateScoreUI();
+    showBanner(msg);
+    el('status').textContent = `${state.players[1].name}: ${fmt(t1)}  ·  ${state.players[2].name}: ${fmt(t2)}`;
+    el('status').className = 'status-text';
+    setTimeout(nextRound, 3400);
   }
 
   function nextRound(){
@@ -942,6 +1085,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   }
 
   function endGame(){
+    stopClock();
+    cancelAI();
     const s1 = state.players[1].score, s2 = state.players[2].score;
     if (!p2IsAI && p2Uid && s1 !== s2) {
       const winner = s1 > s2 ? 1 : 2;
@@ -988,10 +1133,8 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   }
 
   // ---------------- Banner ----------------
-  let bannerTimeout = null;
   function showBanner(text){
     const b = el('banner');
-    clearTimeout(bannerTimeout);
     b.textContent = text;
     b.classList.add('show');
   }
@@ -1007,20 +1150,29 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
   }
 
   // ---------------- Paper peek ----------------
-  // Tapping the card flips it to show the equations for exactly 1 second,
-  // then it auto-flips back to the blank side. Tapping again (even while
-  // already showing) resets the 1-second timer, and this can be repeated
-  // as many times as needed.
-  [1,2].forEach(p => {
-    el(`p${p}-paper`).addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      const inner = el(`p${p}-paperinner`);
-      clearTimeout(state.paperTimeout[p]);
-      inner.classList.add('flipped');
-      state.paperTimeout[p] = setTimeout(() => {
-        inner.classList.remove('flipped');
-      }, 1000);
-    });
+  // Tapping the folder flips it to show the equations for exactly 1 second,
+  // then it auto-flips back. The FIRST tap of a turn also starts the clock.
+  function peekPaper(){
+    const inner = el('paperinner');
+    clearTimeout(state.paperTimeout);
+    inner.classList.add('flipped');
+    state.paperTimeout = setTimeout(() => inner.classList.remove('flipped'), 1000);
+  }
+
+  el('paper').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    if(state.finished) return;
+    if(state.players[state.turn].isAI) return;
+    peekPaper();
+    if(!state.armed){
+      startClock();
+      hideBanner();
+      const statusEl = el('status');
+      statusEl.className = 'status-text';
+      statusEl.textContent = state.equations[state.turn].length > 1
+        ? 'Clock is running — solve them in order, starting with #1.'
+        : 'Clock is running — turn the dial, then lock it in.';
+    }
   });
 
   // ---------------- Dial interaction ----------------
@@ -1034,12 +1186,13 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     return d;
   }
 
-  function initDial(player){
-    const dialEl = el(`p${player}-dial`);
+  function initDial(){
+    const dialEl = el('dial');
     let dragging = false;
     let lastAngle = 0;
 
     function pointerDown(e){
+      if(!state.armed || state.finished) return;
       dragging = true;
       dialEl.setPointerCapture(e.pointerId);
       const rect = dialEl.getBoundingClientRect();
@@ -1047,26 +1200,25 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     }
     function pointerMove(e){
       if(!dragging) return;
-      const st = state.players[player];
       const rect = dialEl.getBoundingClientRect();
       const angle = angleFromCenter(rect.left + rect.width/2, rect.top + rect.height/2, e.clientX, e.clientY);
       const delta = shortestDelta(lastAngle, angle);
       lastAngle = angle;
 
-      st.visualRot += delta;
-      dialEl.style.transform = `rotate(${st.visualRot}deg)`;
+      state.visualRot += delta;
+      dialEl.style.transform = `rotate(${state.visualRot}deg)`;
 
-      st.rotAccum += delta;
+      state.rotAccum += delta;
       let changed = false;
-      while(st.rotAccum >= DEG_PER_STEP){
-        st.dialValue = wrapValue(st.dialValue + 1); changed = true;
-        st.rotAccum -= DEG_PER_STEP;
+      while(state.rotAccum >= DEG_PER_STEP){
+        state.dialValue = wrapValue(state.dialValue + 1); changed = true;
+        state.rotAccum -= DEG_PER_STEP;
       }
-      while(st.rotAccum <= -DEG_PER_STEP){
-        st.dialValue = wrapValue(st.dialValue - 1); changed = true;
-        st.rotAccum += DEG_PER_STEP;
+      while(state.rotAccum <= -DEG_PER_STEP){
+        state.dialValue = wrapValue(state.dialValue - 1); changed = true;
+        state.rotAccum += DEG_PER_STEP;
       }
-      if(changed) el(`p${player}-display`).textContent = st.dialValue;
+      if(changed) el('display').textContent = state.dialValue;
     }
     function pointerUp(e){
       dragging = false;
@@ -1078,82 +1230,72 @@ document.querySelectorAll('.p2-diff-btn').forEach(btn => {
     dialEl.addEventListener('pointerup', pointerUp);
     dialEl.addEventListener('pointercancel', pointerUp);
 
-    el(`p${player}-up`).addEventListener('pointerdown', (e) => {
+    el('nudge-up').addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      const st = state.players[player];
-      st.dialValue = wrapValue(st.dialValue + 1);
-      st.visualRot += DEG_PER_STEP;
-      dialEl.style.transform = `rotate(${st.visualRot}deg)`;
-      el(`p${player}-display`).textContent = st.dialValue;
+      if(!state.armed || state.finished) return;
+      state.dialValue = wrapValue(state.dialValue + 1);
+      state.visualRot += DEG_PER_STEP;
+      dialEl.style.transform = `rotate(${state.visualRot}deg)`;
+      el('display').textContent = state.dialValue;
     });
-    el(`p${player}-down`).addEventListener('pointerdown', (e) => {
+    el('nudge-down').addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      const st = state.players[player];
-      st.dialValue = wrapValue(st.dialValue - 1);
-      st.visualRot -= DEG_PER_STEP;
-      dialEl.style.transform = `rotate(${st.visualRot}deg)`;
-      el(`p${player}-display`).textContent = st.dialValue;
+      if(!state.armed || state.finished) return;
+      state.dialValue = wrapValue(state.dialValue - 1);
+      state.visualRot -= DEG_PER_STEP;
+      dialEl.style.transform = `rotate(${state.visualRot}deg)`;
+      el('display').textContent = state.dialValue;
     });
   }
-  initDial(1);
-  initDial(2);
+  initDial();
 
   // ---------------- Handle / submit ----------------
-  function flashDisplay(player, good){
-    const d = el(`p${player}-display`);
+  function flashDisplay(good){
+    const d = el('display');
     d.classList.remove('flash-good','flash-bad');
     void d.offsetWidth;
     d.classList.add(good ? 'flash-good' : 'flash-bad');
   }
 
-  function pressHandleAnim(player){
-    const btn = el(`p${player}-handle`);
+  function pressHandleAnim(){
+    const btn = el('handle');
     btn.classList.add('pressed');
     setTimeout(() => btn.classList.remove('pressed'), 220);
   }
 
-  function submitAnswer(player){
-    if(state.roundWon) return;
-    pressHandleAnim(player);
+  function submitAnswer(){
+    if(!state.armed || state.finished) return;
+    pressHandleAnim();
 
-    const st = state.players[player];
-    const eq = st.equations[st.step];
-    const statusEl = el(`p${player}-status`);
+    const player = state.turn;
+    const list = state.equations[player];
+    const eq = list[state.step];
+    const statusEl = el('status');
 
-    if(st.dialValue === eq.answer){
-      flashDisplay(player, true);
-      st.step++;
-      if(st.step >= st.equations.length){
-        // WIN THE ROUND
-        state.roundWon = true;
-        const pts = state.round;
-        st.score += pts;
-        updateScoreUI();
-        el(`p${player}-door`).classList.add('open');
-        statusEl.textContent = `Cracked it! +${pts} point${pts > 1 ? 's' : ''}`;
-        statusEl.className = 'status-text good';
-        showBanner(`💥 Player ${player} breaks the vault! +${pts} point${pts > 1 ? 's' : ''}`);
-        setTimeout(nextRound, 2600);
+    if(state.dialValue === eq.answer){
+      flashDisplay(true);
+      state.step++;
+      if(state.step >= list.length){
+        finishTurn();
       } else {
-        setDial(player, 2);
-        statusEl.textContent = `Locked #${st.step}! Now solve #${st.step + 1}.`;
+        setDial(2);
+        statusEl.textContent = `Locked #${state.step}! Now solve #${state.step + 1}.`;
         statusEl.className = 'status-text good';
       }
     } else {
-      flashDisplay(player, false);
-      const safeUnit = el(`p${player}-door`).closest('.safe');
+      flashDisplay(false);
+      const safeUnit = el('door').closest('.safe');
       safeUnit.classList.remove('shake');
       void safeUnit.offsetWidth;
       safeUnit.classList.add('shake');
-      st.step = 0;
-      setDial(player, 2);
-      statusEl.textContent = `Wrong number — alarm reset! Back to #1.`;
+      state.step = 0;
+      setDial(2);
+      statusEl.textContent = `Wrong number — alarm reset! Back to #1. Clock's still running!`;
       statusEl.className = 'status-text bad';
     }
   }
 
-  el('p1-handle').addEventListener('click', () => submitAnswer(1));
-  el('p2-handle').addEventListener('click', () => submitAnswer(2));
+  el('handle').addEventListener('click', () => submitAnswer());
 
 })();
 </script>
