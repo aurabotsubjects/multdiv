@@ -13,7 +13,7 @@ import {
   updateDoc, query, where, orderBy, onSnapshot, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyDwTGll6gVhKUrx_74TZKoXmZRkxXs72Sw",
   authDomain: "playermultdiv.firebaseapp.com",
   projectId: "playermultdiv",

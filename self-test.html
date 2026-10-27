@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Times Tables Race — Account Self-Test</title>
+<link rel="stylesheet" href="css/style.css" />
+<style>
+  .step { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .step:last-child { border-bottom: none; }
+  .step-icon { width: 24px; text-align: center; font-size: 1.05rem; }
+  .step-name { font-weight: 700; font-family: var(--font-display); }
+  .step-detail { font-size: 0.82rem; color: var(--ink-soft); font-family: var(--font-body); margin-top: 2px; word-break: break-word; }
+  .step-detail code { font-family: ui-monospace, Menlo, monospace; }
+  .verdict { margin-top: 14px; }
+  .verdict p { padding: 12px; border-radius: 10px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="chrome-bar">
+    <div class="brand"><span class="flag">🧪</span> Account Self-Test</div>
+    <a class="who" href="teacher.html" style="text-decoration:underline;">← Teacher dashboard</a>
+  </div>
+  <div class="stripe"></div>
+
+  <div class="page">
+    <div class="panel">
+      <h1>Why won't a new password work?</h1>
+      <p>This creates one throwaway student, then immediately tries to log in as them with the code it just generated — the exact thing that's failing. Every step reports its own error code, so we can see <em>which</em> step breaks instead of guessing.</p>
+      <p class="hint-text" style="margin-top:8px;">You must already be signed in as a teacher in this browser (use the dashboard first). The test student is deleted again at the end.</p>
+      <div class="row-inline" style="margin-top:14px; display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <div style="flex:1; min-width:160px;">
+          <div class="label">Class to test in</div>
+          <select id="classSelect"><option value="">Loading…</option></select>
+        </div>
+        <button class="btn gold" id="runBtn" disabled>Run the test</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Results</h2>
+      <div id="steps"><p class="hint-text">Pick a class and press Run.</p></div>
+      <div class="verdict" id="verdict"></div>
+      <button class="btn ghost" id="copyBtn" style="margin-top:12px;">Copy results</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, deleteUser
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+import { auth, db, firebaseConfig, collection, getDocs, query, where, serverTimestamp } from "./js/firebase-init.js";
+import { getMyProfile, slugify } from "./js/auth.js";
+import { generatePassword } from "./js/passwords.js";
+
+// Two throwaway Firebase apps so nothing here disturbs the teacher's own
+// session: one to create the account, one to log in as the student exactly
+// the way their own browser would.
+const writerApp = initializeApp(firebaseConfig, "selftest-writer");
+const studentApp = initializeApp(firebaseConfig, "selftest-student");
+const writerAuth = getAuth(writerApp);
+const studentAuth = getAuth(studentApp);
+const studentDb = getFirestore(studentApp);
+
+const stepsEl = document.getElementById("steps");
+const verdictEl = document.getElementById("verdict");
+const log = [];
+let failures = 0;
+
+function step(name, state, detail) {
+  if (state === "fail") failures++;
+  const icon = state === "ok" ? "✅" : state === "warn" ? "⚠️" : state === "fail" ? "❌" : "ℹ️";
+  const el = document.createElement("div");
+  el.className = "step";
+  el.innerHTML = `<div class="step-icon">${icon}</div><div><div class="step-name">${name}</div><div class="step-detail">${detail}</div></div>`;
+  stepsEl.appendChild(el);
+  log.push(`${icon} ${name} — ${detail.replace(/<[^>]+>/g, "")}`);
+}
+
+const errText = (err) => `<code>${err?.code || "no-code"}</code> — ${err?.message || err}`;
+
+function timed(promise, ms, label) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => {
+    const e = new Error(`${label} never answered (${ms / 1000}s). A blocked or filtered network does this.`);
+    e.code = "app/timeout"; rej(e);
+  }, ms))]);
+}
+
+// ---------- load the teacher's classes ----------
+let teacherProfile = null;
+const classSelect = document.getElementById("classSelect");
+const runBtn = document.getElementById("runBtn");
+
+(async function init() {
+  try {
+    teacherProfile = await getMyProfile();
+    if (!teacherProfile || teacherProfile.role !== "teacher") {
+      classSelect.innerHTML = '<option value="">Not signed in as a teacher</option>';
+      stepsEl.innerHTML = '<p class="error-text">Sign in on the teacher dashboard in this same browser first, then come back.</p>';
+      return;
+    }
+    const snap = await getDocs(query(collection(db, "classes"), where("teacherId", "==", teacherProfile.uid)));
+    const classes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    classSelect.innerHTML = classes.length
+      ? classes.map(c => `<option value="${c.id}|${c.classCode}">${c.className} (${c.classCode})</option>`).join("")
+      : '<option value="">No classes found</option>';
+    runBtn.disabled = !classes.length;
+  } catch (err) {
+    stepsEl.innerHTML = `<p class="error-text">Couldn't even load your classes: ${errText(err)}</p>`;
+  }
+})();
+
+// ---------- the test ----------
+runBtn.addEventListener("click", async () => {
+  stepsEl.innerHTML = "";
+  verdictEl.innerHTML = "";
+  log.length = 0;
+  failures = 0;
+  runBtn.disabled = true;
+  runBtn.textContent = "Testing…";
+
+  const [classId, classCode] = classSelect.value.split("|");
+  const stamp = Date.now().toString().slice(-6);
+  const name = `Zz Selftest ${stamp}`;
+  const email = `${classCode.toLowerCase()}.${slugify(name)}@students.ttrace.app`;
+  const password = generatePassword();
+  let createdUid = null;
+
+  step("Signed in as teacher", "ok", `${teacherProfile.name} · class <code>${classCode}</code>`);
+  step("Code generated for the test student", "info", `<code>${password}</code> for <code>${email}</code>`);
+
+  // 1. Create the Auth account.
+  try {
+    const cred = await timed(createUserWithEmailAndPassword(writerAuth, email, password), 20000, "Creating the account");
+    createdUid = cred.user.uid;
+    step("Auth account created", "ok", `Firebase accepted the new login. uid <code>${createdUid}</code>`);
+  } catch (err) {
+    step("Auth account created", "fail", errText(err));
+    return finish();
+  }
+
+  // 2. Write their profile — the teacher does this, so security rules matter.
+  try {
+    await timed(setDoc(doc(db, "users", createdUid), {
+      role: "student", name, classId, level: 1, mustChangePassword: true,
+      selfTest: true, createdAt: serverTimestamp()
+    }), 20000, "Saving the profile");
+    step("Profile saved to Firestore", "ok", "The teacher's session was allowed to write the student's profile.");
+  } catch (err) {
+    step("Profile saved to Firestore", "fail",
+      `${errText(err)}<br><b>This is the one that breaks logins.</b> The account exists but has no profile, so the app rejects the login and (before this version) blamed the password.`);
+  }
+
+  // 3. THE ACTUAL TEST: log in as that student, from a clean session.
+  try {
+    await timed(signInWithEmailAndPassword(studentAuth, email, password), 20000, "Signing in");
+    step("Logging in with that code", "ok", "The password Firebase stored is exactly the one shown above.");
+  } catch (err) {
+    step("Logging in with that code", "fail",
+      `${errText(err)}<br>Firebase rejected the very code it was just given — so the problem is in account creation, not in what students type.`);
+    return finish();
+  }
+
+  // 4. Read own profile, the way the real login does as step two.
+  try {
+    const snap = await timed(getDoc(doc(studentDb, "users", createdUid)), 20000, "Reading the profile");
+    step("Student can read their own profile", snap.exists() ? "ok" : "fail",
+      snap.exists() ? "Both halves of logging in work." :
+      "Signed in fine, but the profile isn't there — the login fails at step two, which used to be reported as a wrong password.");
+  } catch (err) {
+    step("Student can read their own profile", "fail",
+      `${errText(err)}<br>The password was fine; reading the profile is what failed. Security rules or a blocked connection.`);
+  }
+
+  // 5. Tidy up.
+  try {
+    await setDoc(doc(db, "users", createdUid), { retired: true }, { merge: true });
+    if (studentAuth.currentUser) await deleteUser(studentAuth.currentUser);
+    step("Test student cleaned up", "ok", "Throwaway login deleted. Nothing was added to your class list.");
+  } catch (err) {
+    step("Test student cleaned up", "warn",
+      `${errText(err)}<br>Harmless: delete <code>${email}</code> in Firebase → Authentication → Users when convenient.`);
+  }
+
+  finish();
+
+  function finish() {
+    try { signOut(writerAuth); signOut(studentAuth); } catch (e) {}
+    runBtn.disabled = false;
+    runBtn.textContent = "Run the test";
+    verdictEl.innerHTML = failures === 0
+      ? `<p>Creating an account and logging in with its code both work from this browser. If real students still can't get in, the deployed copy of the site is out of date — re-upload <b>every</b> changed file, then hard-refresh (Shift-reload) on a student device.</p>`
+      : `<p class="error-text">${failures} step(s) failed above. The first ❌ is the real cause — the error code next to it says whether it's security rules (<code>permission-denied</code>), a blocked network (<code>app/timeout</code>, <code>unavailable</code>) or Firebase Auth itself (<code>auth/…</code>).</p>`;
+  }
+});
+
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("copyBtn");
+  try { await navigator.clipboard.writeText(log.join("\n")); btn.textContent = "Copied ✓"; }
+  catch (err) { btn.textContent = "Copy failed"; }
+});
+</script>
+</body>
+</html>

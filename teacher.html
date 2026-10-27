@@ -30,6 +30,7 @@
     <div class="brand"><span class="flag">🏁</span> Teacher Dashboard</div>
     <div style="display:flex; align-items:center; gap:14px;">
       <a href="settings.html" id="settingsBtn" class="btn ghost" style="display:none; padding:8px 14px; font-size:0.8rem; text-decoration:none;">⚙️ Settings</a>
+      <a href="self-test.html" id="selfTestBtn" class="btn ghost" style="display:none; padding:8px 14px; font-size:0.8rem; text-decoration:none;">🧪 Self-test</a>
       <div class="who" id="whoBar"></div>
     </div>
   </div>
@@ -142,6 +143,7 @@ async function showDashboardFor(profile) {
   loginPanel.style.display = "none";
   dashboard.style.display = "flex";
   settingsBtn.style.display = "inline-block"; // only visible once signed in as a teacher
+  document.getElementById("selfTestBtn").style.display = "inline-block";
   await loadClasses();
 }
 
