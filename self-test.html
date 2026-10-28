@@ -54,7 +54,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-import { auth, db, firebaseConfig, collection, getDocs, query, where, serverTimestamp } from "./js/firebase-init.js";
+import { auth, db, firebaseConfig, onAuthStateChanged, collection, getDocs, query, where, serverTimestamp } from "./js/firebase-init.js";
 import { getMyProfile, slugify } from "./js/auth.js";
 import { generatePassword } from "./js/passwords.js";
 
@@ -96,12 +96,28 @@ let teacherProfile = null;
 const classSelect = document.getElementById("classSelect");
 const runBtn = document.getElementById("runBtn");
 
+// Firebase restores a signed-in session ASYNCHRONOUSLY from browser storage.
+// For a moment after the page loads, auth.currentUser is null even when the
+// person is perfectly well signed in — so asking straight away gets the wrong
+// answer. Wait for the first auth state event instead.
+function waitForAuth(timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    let done = false;
+    const stop = onAuthStateChanged(auth, (user) => {
+      if (done) return;
+      done = true; stop(); resolve(user);
+    });
+    setTimeout(() => { if (!done) { done = true; stop(); resolve(null); } }, timeoutMs);
+  });
+}
+
 (async function init() {
   try {
-    teacherProfile = await getMyProfile();
+    const user = await waitForAuth();
+    teacherProfile = user ? await getMyProfile() : null;
     if (!teacherProfile || teacherProfile.role !== "teacher") {
       classSelect.innerHTML = '<option value="">Not signed in as a teacher</option>';
-      stepsEl.innerHTML = '<p class="error-text">Sign in on the teacher dashboard in this same browser first, then come back.</p>';
+      stepsEl.innerHTML = `<p class="error-text">No teacher session found in this browser${user ? ` (signed in as ${user.email}, but that account's profile says role "${teacherProfile?.role || "none"}")` : ""}. Sign in on the teacher dashboard first, then come back.</p>`;
       return;
     }
     const snap = await getDocs(query(collection(db, "classes"), where("teacherId", "==", teacherProfile.uid)));
@@ -131,7 +147,25 @@ runBtn.addEventListener("click", async () => {
   const password = generatePassword();
   let createdUid = null;
 
-  step("Signed in as teacher", "ok", `${teacherProfile.name} · class <code>${classCode}</code>`);
+  step("Signed in as teacher", "ok", `${teacherProfile.name} · class <code>${classCode}</code> · Firebase project <code>${firebaseConfig.projectId}</code>`);
+
+  // Is THIS browser actually running the current code, or a cached old copy?
+  // An iPad holding yesterday's JavaScript behaves exactly like a broken
+  // password, because the old code reported every failure as a bad password.
+  try {
+    const res = await fetch("js/auth.js", { cache: "no-store" });
+    const fresh = await res.text();
+    const cached = await (await fetch("js/auth.js")).text();
+    const hasReset = (t) => t.includes("resetStudentPassword");
+    step("This browser is running the current code",
+      hasReset(cached) ? "ok" : "fail",
+      hasReset(cached)
+        ? "The copy this browser uses is up to date."
+        : `This browser is serving a CACHED OLD copy of js/auth.js (the live server's copy is ${hasReset(fresh) ? "current" : "ALSO out of date"}). Hard-reload with Shift-Reload, or clear the site's cache.`);
+  } catch (err) {
+    step("This browser is running the current code", "warn", `Couldn't check: ${errText(err)}`);
+  }
+
   step("Code generated for the test student", "info", `<code>${password}</code> for <code>${email}</code>`);
 
   // 1. Create the Auth account.

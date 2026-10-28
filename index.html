@@ -44,6 +44,7 @@
       </div>
 
       <div id="loginError" class="error-text" style="display:none;"></div>
+      <div id="loginDetail" class="hint-text" style="display:none;"></div>
       <button class="btn gold" id="goBtn" disabled>Let's go 🚗</button>
       <p class="hint-text" style="margin-top:4px;">Stuck on this screen? <a href="connection-check.html" style="text-decoration:underline;">Check this device's connection</a>.</p>
     </div>
@@ -168,8 +169,16 @@ goBtn.addEventListener("click", async () => {
     // Never blame the password for something that wasn't the password —
     // describeError() tells apart a genuine mismatch from a blocked network,
     // a security-rules refusal or a missing profile.
-    console.error("Student login failed:", err);
+    console.error("Student login failed:", err, "email tried:", studentSelect.value);
     showError(describeError(err));
+    // Show WHICH login was attempted. If Firebase says the password is wrong,
+    // the other possibility is that the name in the list points at a different
+    // account than the one the code was issued for — and the only way to tell
+    // those apart is to see the address it actually tried. A teacher can
+    // compare this against Firebase → Authentication → Users.
+    const detail = document.getElementById("loginDetail");
+    detail.textContent = `Tried to sign in as: ${studentSelect.value}`;
+    detail.style.display = "block";
   } finally {
     goBtn.disabled = false;
     goBtn.textContent = "Let's go 🚗";
@@ -217,7 +226,11 @@ document.getElementById("savePwBtn").addEventListener("click", async () => {
 });
 
 function showError(msg) { loginError.textContent = msg; loginError.style.display = "block"; }
-function hideError() { loginError.style.display = "none"; }
+function hideError() {
+  loginError.style.display = "none";
+  const d = document.getElementById("loginDetail");
+  if (d) d.style.display = "none";
+}
 </script>
 </body>
 </html>
