@@ -308,3 +308,85 @@ export async function resetStudentPassword({ classId, classCode, student }) {
     rosterMismatch: idx < 0
   };
 }
+
+// ---------- Removing a student ----------
+// A browser can't delete somebody else's Firebase Auth account (same Admin-SDK
+// wall as changing their password), so "delete" here means: take them off the
+// class login list and mark their profile dead. The login dropdown is built
+// from the class list, so they vanish from it immediately, and studentLogin()
+// refuses a retired profile even if someone knew the old password.
+//
+// The leftover Auth account is harmless, and CAN be deleted by hand in
+// Firebase → Authentication → Users — that part of the console does work
+// (unlike its password reset, which only emails a link into the void).
+// Returns the internal email so the teacher can find it there.
+export async function deleteStudent({ classId, student }) {
+  const rosterRef = doc(db, "classRosters", classId);
+  const rosterSnap = await getDoc(rosterRef);
+  const rosterData = rosterSnap.exists() ? rosterSnap.data() : { students: [] };
+  const students = rosterData.students || [];
+  const entry = students.find(s => s.uid === student.uid);
+
+  await setDoc(rosterRef, {
+    ...rosterData,
+    students: students.filter(s => s.uid !== student.uid),
+    retiredEmails: entry?.email
+      ? [...(rosterData.retiredEmails || []), entry.email]
+      : (rosterData.retiredEmails || [])
+  });
+
+  await setDoc(doc(db, "users", student.uid), {
+    retired: true, deleted: true
+  }, { merge: true });
+
+  return { email: entry?.email || null };
+}
+
+// ---------- Checking the login list ----------
+// The dropdown students pick their name from is built from classRosters, NOT
+// from their profiles — so the two can drift apart. When they do, a student
+// picks a name that points at a dead account, types a perfectly good password
+// and is told it's wrong. This finds exactly that.
+export async function getRosterHealth(classId) {
+  const entries = await getClassRoster(classId);
+  const nameCounts = {};
+  entries.forEach(e => { nameCounts[e.name] = (nameCounts[e.name] || 0) + 1; });
+
+  const out = [];
+  for (const entry of entries) {
+    let status = "ok", detail = "This name points at a working account.";
+    try {
+      const snap = await getDoc(doc(db, "users", entry.uid));
+      if (!snap.exists()) {
+        status = "missing";
+        detail = "There's no profile behind this name. Anyone picking it gets told their password is wrong, whatever they type.";
+      } else if (snap.data().deleted) {
+        status = "deleted";
+        detail = "This student was removed, but their name is still in the login list.";
+      } else if (snap.data().retired) {
+        status = "retired";
+        detail = "Left over from a password reset. This is the dead account — picking this name can never work, no matter how many times you reset them.";
+      }
+    } catch (err) {
+      status = "unknown";
+      detail = `Couldn't check this one (${err.code || err.message}).`;
+    }
+    if (status === "ok" && nameCounts[entry.name] > 1) {
+      status = "duplicate";
+      detail = `"${entry.name}" is in the login list ${nameCounts[entry.name]} times. Students can't tell the entries apart, so they often pick the wrong one.`;
+    }
+    out.push({ ...entry, status, detail });
+  }
+  return out;
+}
+
+// Take one entry off the login list without touching the account behind it.
+export async function removeRosterEntry(classId, uid) {
+  const rosterRef = doc(db, "classRosters", classId);
+  const rosterSnap = await getDoc(rosterRef);
+  const rosterData = rosterSnap.exists() ? rosterSnap.data() : { students: [] };
+  await setDoc(rosterRef, {
+    ...rosterData,
+    students: (rosterData.students || []).filter(s => s.uid !== uid)
+  });
+}
