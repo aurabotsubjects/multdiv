@@ -22,6 +22,12 @@
   .reset-steps li { margin-bottom: 4px; }
   .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
   .modal-box { max-width: 560px; width: 100%; max-height: 85vh; overflow: auto; }
+  .health-row { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: flex-start; }
+  .health-row:last-child { border-bottom: none; }
+  .health-icon { width: 22px; text-align: center; }
+  .health-body { flex: 1; }
+  .health-detail { font-size: 0.8rem; color: var(--ink-soft); font-family: var(--font-body); margin-top: 2px; }
+  .danger-btn { background: #b3452f; color: #fff; }
 </style>
 </head>
 <body>
@@ -107,6 +113,13 @@
           </div>
         </div>
 
+        <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--line);">
+          <h3 style="font-family:var(--font-display); margin:0 0 4px;">🔍 Check the login list</h3>
+          <p class="hint-text">The names students pick from are kept separately from their accounts, and the two can drift apart. When they do, a student picks their own name, types a perfectly good password, and is told it's wrong. Run this if someone can't get in.</p>
+          <button class="btn" id="healthBtn" style="margin-top:10px;">Check it now</button>
+          <div id="healthResults" style="margin-top:10px;"></div>
+        </div>
+
         <table style="margin-top:16px;">
           <thead><tr><th>Name</th><th>Level</th><th></th></tr></thead>
           <tbody id="rosterBody"></tbody>
@@ -118,7 +131,8 @@
 
 <script type="module">
 import { auth, onAuthStateChanged } from "./js/firebase-init.js";
-import { teacherLogin, getMyProfile, createClass, createStudentAccount, getClassRoster, resetStudentPassword, logout } from "./js/auth.js";
+import { teacherLogin, getMyProfile, createClass, createStudentAccount, getClassRoster,
+         resetStudentPassword, deleteStudent, getRosterHealth, removeRosterEntry, logout } from "./js/auth.js";
 import { listClassesForTeacher, listStudents, setStudentLevel, listenPendingNotifications, resolveNotification } from "./js/db.js";
 import { levelInfo, nextLevel } from "./js/levels.js";
 
@@ -235,6 +249,7 @@ async function loadRoster() {
             <button class="mini-btn" data-id="${s.id}" data-delta="-1">-1 level</button>
             <button class="mini-btn" data-id="${s.id}" data-delta="1">+1 level</button>
             <button class="mini-btn" data-reset="${s.id}">🔑 Reset password</button>
+            <button class="mini-btn" data-remove="${s.id}">🗑️ Remove</button>
           </td>
         </tr>`).join("")
     : `<tr><td colspan="3">No students yet — add one above.</td></tr>`;
@@ -249,6 +264,13 @@ async function loadRoster() {
     });
   });
 
+  rosterBody.querySelectorAll("button[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const student = students.find(s => s.id === btn.dataset.remove);
+      showDeleteDialog({ uid: student.id, name: student.name });
+    });
+  });
+
   rosterBody.querySelectorAll("button[data-reset]").forEach(btn => {
     btn.addEventListener("click", () => {
       const student = students.find(s => s.id === btn.dataset.reset);
@@ -256,6 +278,107 @@ async function loadRoster() {
     });
   });
 }
+
+// ---------- Removing a student ----------
+function showDeleteDialog(student) {
+  const back = document.createElement("div");
+  back.className = "modal-back";
+  back.innerHTML = `
+    <div class="panel modal-box" id="delBox">
+      <h2>&#128465;&#65039; Remove ${student.name}?</h2>
+      <p>They'll disappear from the student login list straight away and won't be able to sign in.</p>
+      <ul class="reset-steps">
+        <li>Their level and any leaderboard wins stop counting.</li>
+        <li>You can add them again as a brand-new student afterwards.</li>
+        <li>This can't be undone from here.</li>
+      </ul>
+      <div class="pw-actions">
+        <button class="btn danger-btn" id="doDelBtn">Remove ${student.name}</button>
+        <button class="btn ghost" id="cancelDelBtn">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  back.addEventListener("click", (e) => { if (e.target === back) close(); });
+  back.querySelector("#cancelDelBtn").addEventListener("click", close);
+
+  back.querySelector("#doDelBtn").addEventListener("click", async () => {
+    const btn = back.querySelector("#doDelBtn");
+    btn.disabled = true;
+    btn.textContent = "Removing\u2026";
+    try {
+      const { email } = await deleteStudent({ classId: currentClassId, student });
+      back.querySelector("#delBox").innerHTML = `
+        <h2>&#9989; ${student.name} removed</h2>
+        <p>They're off the login list. You can add them again as a new student whenever you like.</p>
+        <p class="hint-text" style="margin-top:10px;">Their old sign-in (<span class="pw-code">${email || "unknown"}</span>) still exists inside Firebase but can't be used. To clear it out completely, delete that address in Firebase &rarr; Authentication &rarr; Users &mdash; that part of the console does work.</p>
+        <div class="pw-actions"><button class="btn ghost" id="closeDelBtn">Close</button></div>`;
+      back.querySelector("#closeDelBtn").addEventListener("click", async () => { close(); await loadRoster(); });
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Try again";
+      const note = document.createElement("p");
+      note.className = "error-text";
+      note.textContent = err.message || "Couldn't remove that student.";
+      back.querySelector("#delBox").appendChild(note);
+      console.error(err);
+    }
+  });
+}
+
+// ---------- Login-list health check ----------
+// The dropdown students pick from is built from the class list, not from their
+// profiles, so the two can drift apart. This compares them.
+document.getElementById("healthBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("healthBtn");
+  const out = document.getElementById("healthResults");
+  if (!currentClassId) return;
+  btn.disabled = true;
+  btn.textContent = "Checking\u2026";
+  out.innerHTML = "";
+  try {
+    const rows = await getRosterHealth(currentClassId);
+    const problems = rows.filter(r => r.status !== "ok");
+    const icon = { retired: "\u{1F480}", deleted: "\u{1F5D1}", missing: "\u2753", duplicate: "\u{1F46F}", unknown: "\u26A0" };
+
+    out.innerHTML = problems.length
+      ? `<p class="error-text">${problems.length} entr${problems.length === 1 ? "y" : "ies"} in the login list can't work. Removing them won't touch anyone's account &mdash; it only tidies the list students pick from.</p>`
+      : `<p>All ${rows.length} name${rows.length === 1 ? "" : "s"} in the login list point at working accounts. If someone still can't get in, it really is their password &mdash; reset them.</p>`;
+
+    problems.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "health-row";
+      row.innerHTML = `
+        <div class="health-icon">${icon[r.status] || "\u26A0"}</div>
+        <div class="health-body">
+          <div><b>${r.name}</b></div>
+          <div class="health-detail">${r.detail}</div>
+          <div class="health-detail pw-code">${r.email || ""}</div>
+        </div>
+        <button class="mini-btn" data-drop="${r.uid}">Remove from list</button>`;
+      row.querySelector("button[data-drop]").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = "Removing\u2026";
+        try {
+          await removeRosterEntry(currentClassId, r.uid);
+          row.remove();
+          await loadRoster();
+        } catch (err) {
+          e.target.disabled = false;
+          e.target.textContent = "Failed \u2014 retry";
+          console.error(err);
+        }
+      });
+      out.appendChild(row);
+    });
+  } catch (err) {
+    out.innerHTML = `<p class="error-text">Couldn't check the list: ${err.code || err.message}</p>`;
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Check it now";
+  }
+});
 
 // ---------- Resetting a forgotten password ----------
 // One click. The student's old login is retired and a fresh one-time code is
